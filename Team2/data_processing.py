@@ -1,5 +1,6 @@
 import chess
 import chess.pgn
+import numpy as np
 
 def encode_fen_to_board(fen):
     """Takes in a FEN string and converts it into an 8x8x12 numpy tensor.
