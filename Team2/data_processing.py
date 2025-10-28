@@ -19,24 +19,21 @@ def encode_fen_to_board(fen):
     'p': 6, 'n': 7, 'b': 8, 'r': 9, 'q': 10, 'k': 11
     }
 
-    board_array = np.zeros((8, 8, 12), dtype=np.uint8)
+    fen = fen.split(" ")[0]
     fen = fen.split("/")
-    for rank in range(0, 8):
-        col = 0
-        r = ""
-        if fen[rank].find(" ") == -1:
-            r = fen[rank]    
-        else:
-            r = fen[rank][:fen[rank].find(" ")]
 
-        for char in r:
-            
-            if char.isdigit():
-                col += int(char)
-            else:
-                board_array[7-rank][col][key[char]] = 1
-                col += 1    
-    return board_array
+    board = np.zeros((8,8,12),dtype=np.int8)
+    
+    for rank in range(8):
+        col = 0
+        while col < len(fen[rank]):
+            for char in fen[rank]:
+                if char.isdigit():
+                    col += int(char)
+                else:
+                    board[rank][col][key[char]] = 1 # change the value of 12 entry vector
+                    col += 1
+    return board
 
 def extract_fens_from_pgn(pgn_path):
     """Taken in a path to a pgn file (could contain multiple games) and returns 
