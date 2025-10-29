@@ -1,0 +1,30 @@
+https://www.geeksforgeeks.org/artificial-intelligence/alphago-algorithm-in-artificial-intelligence/
+
+- create agent class
+    set up NN architecture, train and store weights
+        ! Supervised learning policy network (keishi)
+        ! RL policy network (jacqueline)
+        ! value network (kushagra)
+    ! implement MCTS (vincent)
+
+- implement environment class (doesnt have to be gymnasium; but it has to bridge Python chess and the agent)
+    loop to for human to play the game against the agent
+    methods to terminate the game
+    print the current state
+    print which pieces have been taken
+
+- A script that will initialize the agent and print the board at each turn
+
+
+Timeline:
+
+saturday nov 1 (morning): finish implementing architecture
+saturday nov 1 (evening): finish training NN
+wednesday nov 5: all remaining classes implemented
+friday nov 7: script ready
+Present saturday nov 8!
+
+
+
+
+(maybe) some way of evaluating how good/bad our current solution is?
