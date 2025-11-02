@@ -25,6 +25,13 @@ friday nov 7: script ready
 Present saturday nov 8!
 
 
+Next Steps:
+- combine NN layers into class, test and train
+   - save weights and write script to load them
+- Create Agent class with MCTS imlpemented
+- Create environment class
+- Create simple script to create and activate a virtual env
+- Create script to actually play chess against the agent
 
 
 (maybe) some way of evaluating how good/bad our current solution is?
