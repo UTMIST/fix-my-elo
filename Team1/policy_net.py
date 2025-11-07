@@ -34,7 +34,7 @@ class ResBlock(nn.Module):
 
 class PolicyNet(nn.Module):
     """Policy Network for Chess Move Prediction."""
-
+    # more res blocks and filters can be added for better performance
     def __init__(self, num_res_blocks: int = 5, num_filters: int = 256):
         super(PolicyNet, self).__init__()
 
@@ -78,6 +78,22 @@ class PolicyNet(nn.Module):
     def predict(self, board: chess.Board) -> np.ndarray:
         """Predict move probabilities for a given chess board state.
         """
-        pass
+        self.eval()
+        with torch.no_grad():
+            board_tensor = ChessBoardEncoder.board_to_tensor(board)
+            board_tensor = board_tensor.unsqueeze(0)
 
+            probs = self.forward(board_tensor)
+            probs = torch.exp(probs).squeeze(0)
 
+            legal_moves = list(board.legal_moves)
+            best_move = None
+            best_prob = -1
+
+            for move in legal_moves:
+                move_index = self.move_encoder.move_to_index(move)
+                if move_index >= 0 and probs[move_index] > best_prob:
+                    best_prob = probs[move_index]
+                    best_move = move
+
+            return best_move if best_move else legal_moves[0]
