@@ -75,7 +75,7 @@ class PolicyNet(nn.Module):
 
         return policy
 
-    def predict(self, board: chess.Board) -> np.ndarray:
+    def predict(self, board: chess.Board) -> chess.Move:
         """Predict move probabilities for a given chess board state.
         """
         self.eval()
