@@ -188,7 +188,7 @@ def label_to_move_table():
     return label_to_move
 
 
-print(label_to_move_table()[16554])
+# print(label_to_move_table()[16554])
 
 
 def generate_dataset_from_pgn(pgn_path: str) -> list[torch.Tensor, torch.Tensor]:
