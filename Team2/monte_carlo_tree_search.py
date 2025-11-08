@@ -7,6 +7,14 @@ class Monte_Carlo_Tree_Search:
     '''
 
     def __init__(self, policy_network, value_network, c_puct, expected_reward, frequency_action, visited):
+        '''
+        policy_network: neural network that predicts move probabilities
+        value_network: neural network that predicts state value
+        c_puct: exploration parameter (higher values encourage exploration)
+        expected_reward: dictionary mapping game states to expected rewards for each action
+        frequency_action: dictionary mapping game states to visit counts for each action
+        visited: set of visited game states
+        '''
         self.policy_network = policy_network
         self.value_network = value_network
         self.c_puct = c_puct
@@ -14,13 +22,6 @@ class Monte_Carlo_Tree_Search:
         self.frequency_action = frequency_action
         self.visited = visited
     
-    def select_move(self, game_state):
-        '''
-        Selects the best move based on the policy network's predictions.
-        '''
-        policy = self.policy_network.predict(game_state)
-        best_move = torch.argmax(policy).item()
-        return best_move
     
     def search(self, game_state):
         '''
