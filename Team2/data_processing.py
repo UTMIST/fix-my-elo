@@ -180,14 +180,15 @@ def label_to_move_table():
                     move_label = int(move_tensor_to_label(uci_to_tensor(base)))
                     label_to_move[move_label] = base
 
-                    if row1 == 7 and row2 == 8:
-                        for promotion in ["q", "r", "b", "n"]:
-                            new_base = f"{base}{promotion}"
-                            move_label = int(
-                                move_tensor_to_label(uci_to_tensor(new_base))
-                            )
-                            label_to_move[move_label] = new_base
+                    # if row1 == 7 and row2 == 8:
+                    for promotion in ["q", "r", "b", "n"]:
+                        new_base = f"{base}{promotion}"
+                        move_label = int(move_tensor_to_label(uci_to_tensor(new_base)))
+                        label_to_move[move_label] = new_base
     return label_to_move
+
+
+print(label_to_move_table()[16554])
 
 
 def generate_dataset_from_pgn(pgn_path: str) -> list[torch.Tensor, torch.Tensor]:
