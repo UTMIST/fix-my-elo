@@ -23,7 +23,7 @@ def fen_to_board(fen):
     fen = fen.split(" ")[0]
     fen = fen.split("/")
 
-    board = torch.zeros((8, 8, 12), dtype=torch.int8)
+    board = torch.zeros((8, 8, 12), dtype=torch.float32)
 
     for rank in range(8):
         col = 0
@@ -104,7 +104,7 @@ def uci_to_tensor(uci_string: str) -> torch.Tensor:
         else:  # knight promotion
             promotion = 4
 
-    final = torch.zeros(2, 8, 8, 5, dtype=torch.uint8)
+    final = torch.zeros(2, 8, 8, 5, dtype=torch.float32)
     final[0, x1, y1, 0] = 1  # no promotion happens before the move
     final[1, x2, y2, promotion] = 1
 
@@ -132,9 +132,81 @@ def extract_fens_grouped_with_moves(pgn_path) -> list[str, str]:
     return all_fens
 
 
+# number of possible encodings with the above is:
+# 8x8 (for the first board)
+# 8x8x5 (for the second board)
+# = 20480 possibilities
+
+
+def move_tensor_to_label(move_tensor):
+    """
+    Converts a (2, 8, 8, 5) move tensor to a single integer label (0-20479).
+
+    move_tensor[0, row, col, 0] = 1 indicates from-square
+    move_tensor[1, row, col, promo] = 1 indicates to-square and promotion
+    """
+    # Find the from-square (in the first slice, always at depth 0)
+    from_indices = torch.where(move_tensor[0, :, :, 0] == 1)
+    from_row = from_indices[0].item()
+    from_col = from_indices[1].item()
+    from_square = from_row * 8 + from_col  # 0-63
+
+    # Find the to-square and promotion (in the second slice)
+    to_indices = torch.where(move_tensor[1] == 1)
+    to_row = to_indices[0].item()
+    to_col = to_indices[1].item()
+    promotion = to_indices[2].item()
+    to_square = to_row * 8 + to_col  # 0-63
+
+    # Convert to single label
+    label = from_square * 320 + to_square * 5 + promotion
+
+    return label
+
+
+def label_to_uci(label):
+    """
+    Converts a single integer label (0-20479) back to UCI move string.
+
+    Reverses the encoding: label = from_square * 320 + to_square * 5 + promotion
+    """
+    # Extract components
+    from_square = label // 320
+    remainder = label % 320
+    to_square = remainder // 5
+    promotion = remainder % 5
+
+    # Convert squares to coordinates
+    from_row = from_square // 8
+    from_col = from_square % 8
+    to_row = to_square // 8
+    to_col = to_square % 8
+
+    # Convert to UCI notation (a-h for columns, 1-8 for rows)
+    from_file = chr(from_col + 97)  # 97 is 'a'
+    from_rank = str(from_row + 1)
+    to_file = chr(to_col + 97)
+    to_rank = str(to_row + 1)
+
+    uci = from_file + from_rank + to_file + to_rank
+
+    # Add promotion if applicable
+    if promotion == 1:
+        uci += "q"
+    elif promotion == 2:
+        uci += "r"
+    elif promotion == 3:
+        uci += "b"
+    elif promotion == 4:
+        uci += "n"
+    # promotion == 0 means no promotion, so don't add anything
+
+    return uci
+
+
 def generate_dataset_from_pgn(pgn_path: str) -> list[torch.Tensor, torch.Tensor]:
     """
-    Takes in a pgn file path and returns a list of [torch.Tensor(8,8,12), torch.Tensor(2,8,8,4)].
+    Takes in a pgn file path and returns a list of [torch.Tensor(8,8,12), torch.Tensor(2,8,8,5)].
     First tensor is the board state before the move.
     Second tessor is the move made from that position as encoded following uci_to_tensor.
     """
@@ -147,12 +219,13 @@ def generate_dataset_from_pgn(pgn_path: str) -> list[torch.Tensor, torch.Tensor]
 
             board = fen_to_board(fen)
             move_tensor = uci_to_tensor(move)
+            label = move_tensor_to_label(move_tensor)
 
-            dataset.append([board, move_tensor])
+            dataset.append([board, label])
 
     return dataset
 
 
 # test
-# dataset = generate_dataset_from_pgn("Team2/masaurus101-white.pgn")
-# print(dataset[0])
+dataset = generate_dataset_from_pgn("Team2/masaurus101-white.pgn")
+print(dataset[0])
