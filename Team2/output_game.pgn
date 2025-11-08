@@ -1,0 +1,9 @@
+[Event "AI Self Play"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Your Model"]
+[Black "Your Model"]
+[Result "1/2-1/2"]
+
+1. e4 e5 2. d4 Nf6 3. Nf3 Nc6 4. Nc3 d6 5. g3 g6 6. Nxe5 Bg7 7. Bg2 O-O 8. O-O Nxe4 9. h3 f6 10. f4 a6 11. Be3 b5 12. b4 h6 13. d5 Nd4 14. a3 Bd7 15. Re1 c6 16. g4 cxd5 17. Qd2 Rc8 18. Rec1 Re8 19. Nxe4 Bc6 20. Kh2 Re7 21. h4 Qd7 22. Kh3 dxe4 23. Rab1 Bd5 24. Bf3 Qc6 25. Bxe4 Qc5 26. Bxd5+ Re6 27. Bc4 d5 28. g5 dxc4 29. gxf6 h5 30. Qd3 Bh6 31. Qxd4 Qxd4 32. f5 Qd5 33. c3 Qe4 34. Bd4 Qd5 35. Bc5 Qe4 36. Bd4 Qd5 37. Bc5 Qe4 38. Bd4 Qd5 39. Bc5 Qe4 40. Bd4 Qd5 41. Bc5 Qe4 42. Bd4 1/2-1/2
