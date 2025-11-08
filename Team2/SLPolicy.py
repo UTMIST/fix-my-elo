@@ -5,11 +5,14 @@ import torch.optim as optim
 import os
 
 from torch.utils.data import DataLoader, TensorDataset
-from data_processing import generate_dataset_from_pgn, label_to_uci
+from data_processing import generate_dataset_from_pgn, label_to_move_table
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {torch.cuda.get_device_name(torch.cuda.current_device())}")
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-dataset = generate_dataset_from_pgn("Team2/masaurus101-white.pgn") # dataset is a list of lists, of all moves in a game (8,8,12)
+dataset = generate_dataset_from_pgn("Team2/masaurus101-white.pgn") # dataset is a list of all moves in a game (8,8,12)
 train_to_test_ratio = 0.8
 
 train_size = int(len(dataset) * train_to_test_ratio)
@@ -65,17 +68,20 @@ class SLPolicyNetwork(nn.Module):
         return x
 
 
-model = SLPolicyNetwork()
+model = SLPolicyNetwork().to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.1e-3)
 
-epochs = 20
+label_to_uci = label_to_move_table()
+
+epochs = 10
 
 for epoch in range(epochs):
     total_loss = 0
     model.train()
 
     for x_batch, y_batch in train_dataloader:
+        x_batch, y_batch = x_batch.to(device), y_batch.to(device)
         optimizer.zero_grad()
         outputs = model(x_batch)
         loss = criterion(outputs, y_batch)
@@ -94,7 +100,7 @@ def predict_move(model, board_tensor):
 
     with torch.no_grad():  # No gradients needed for inference
         # Add batch dimension: (8, 8, 12) -> (1, 8, 8, 12)
-        board_batch = board_tensor.unsqueeze(0)
+        board_batch = board_tensor.unsqueeze(0).to(device)
 
         # Get model output
         outputs = model(board_batch)  # Shape: (1, 20480)
@@ -103,7 +109,7 @@ def predict_move(model, board_tensor):
         predicted_label = torch.argmax(outputs, dim=1).item()
 
         # Convert to UCI
-        predicted_uci = label_to_uci(predicted_label)
+        predicted_uci = label_to_uci[predicted_label]
 
     return predicted_uci, predicted_label
 
@@ -114,7 +120,7 @@ board_tensor, actual_label = dataset[0]
 
 # Predict
 predicted_uci, predicted_label = predict_move(model, board_tensor)
-actual_uci = label_to_uci(actual_label)
+actual_uci = label_to_uci[actual_label]
 
 print(f"Predicted move: {predicted_uci}")
 print(f"Actual move: {actual_uci}")
