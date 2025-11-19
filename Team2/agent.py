@@ -1,6 +1,6 @@
-import torch
+import chess
 import numpy as np
-from monte_carlo_tree_search import MonteCarloTreeSearch
+from monte_carlo_tree_search import Monte_Carlo_Tree_Search
 
 
 class Agent:
@@ -9,17 +9,18 @@ class Agent:
     '''
 
     def __init__(self, policy_network, value_network, c_puct):
-        self.mcts = MonteCarloTreeSearch(policy_network, value_network, c_puct, {}, {}, set())
+        self.mcts = Monte_Carlo_Tree_Search(policy_network, value_network, c_puct, {}, {}, set())
 
 
     def select_move(self, game_state, num_simulations):
         '''
         Selects the best move based on the policy network's predictions.
         '''
+        board = game_state.fen()
         for _ in range(num_simulations): 
             self.mcts.search(game_state)
 
-        return max(self.mcts.frequency_action[game_state], key=self.mcts.frequency_action[game_state].get)
+        return max(self.mcts.frequency_action[board], key=self.mcts.frequency_action[board].get)
 
       
     def assign_rewards(self, examples, reward):
@@ -44,24 +45,27 @@ class Agent:
         num_simulations: number of MCTS simulations to run per move  
         '''
         
-        game_state = STARTING_STATE
+        game_state = chess.Board()
+        board = game_state.fen()
         examples = [] # stores state, policy, and reward for training
+
         while True: # infinite loop until terminal state
             # run MCTS simulations to find policy for current state
             for _ in range(num_simulations): 
                 self.mcts.search(game_state)
             
             # store training example and find move based on policy
-            examples.append([game_state, self.mcts.frequency_action[game_state], None]) # reward to be assigned later
+            examples.append([board, self.mcts.frequency_action[board], None]) # reward to be assigned later
             
             # find optimal move based on visit frequencies (policy)
-            freqs = np.array(list(self.mcts.frequency_action[game_state].values()), dtype=np.float32)
+            freqs = np.array(list(self.mcts.frequency_action[board].values()), dtype=np.float32)
             probs = freqs / freqs.sum()
-            move = np.random.choice(list(self.mcts.frequency_action[game_state].keys()), p=probs)
+            move = np.random.choice(list(self.mcts.frequency_action[board].keys()), p=probs)
             
-            game_state = game_state.perform_move(move) # perform selected move
-            if game_state.is_terminal(): # check for terminal state
-                self.assign_rewards(examples, game_state.get_reward()) # assign rewards to examples
+            game_state = game_state.push_uci(move) # perform selected move
+            if game_state.is_game_over(): # check for terminal state
+                reward = 0 if game_state.result == "1/2-1/2" else 1
+                self.assign_rewards(examples, reward) # assign rewards to examples
                 return examples
             
     

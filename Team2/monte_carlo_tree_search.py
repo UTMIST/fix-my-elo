@@ -1,5 +1,6 @@
-import torch
 import math
+from data_processing import move_tensor_to_label, uci_to_tensor, fen_to_board
+
 
 class Monte_Carlo_Tree_Search:
     '''
@@ -27,40 +28,45 @@ class Monte_Carlo_Tree_Search:
         '''
         Performs a single iteration of MCTS, returning the value of the game state and updating expected_reward and frequency_action.
         '''
+
+        board = game_state.fen()  # get FEN representation of the board
+
         # base case, terminal state
-        if game_state.is_terminal():
-            return -game_state.get_reward()
+        if game_state.is_game_over():
+            return -1
         
         # if state not visited, initialize node with value network
         if game_state not in self.visited:
-            self.visited.add(game_state)
-            v = self.value_network.predict(game_state)
+            self.visited.add(board)
+            v = self.value_network.predict(fen_to_board(board))
             return -v
 
 
         # select move with highest UCT (upper confidence bound of tree) value
         max_uct, best_move = -float('inf'), None
 
+
         # iterate through legal moves to find best UCT
-        for move in game_state.get_legal_moves():
+        legal_moves = [move.uci() for move in game_state.legal_moves]
+
+        for move in legal_moves:
             # compute UCT value
-            initial_probability = self.policy_network.predict(game_state)[move]
-            uct = self.expected_reward[game_state][move] + self.c_puct * initial_probability * math.sqrt(sum(self.frequency_action[game_state])) / (1 + self.frequency_action[game_state][move])
+            move_label = move_tensor_to_label(uci_to_tensor(move))
+            initial_probability = self.policy_network.predict(fen_to_board(board))[move_label]
+            uct = self.expected_reward[board][move] + self.c_puct * initial_probability * math.sqrt(sum(self.frequency_action[board])) / (1 + self.frequency_action[board][move])
            
             if uct > max_uct:
                 max_uct = uct
                 best_move = move
 
+
         # recursively search the next state
-        state_ev = self.search(game_state.perform_move(best_move))
+        state_ev = self.search(game_state.push_uci(best_move))
 
         # update expected reward and frequency action
-        self.expected_reward[game_state][best_move] = (self.frequency_action[game_state][best_move] * self.expected_reward[game_state][best_move] + v)/(self.frequency_action[game_state][best_move]+1)
-        self.frequency_action[game_state][best_move] += 1
+        self.expected_reward[board][best_move] = (self.frequency_action[board][best_move] * self.expected_reward[board][best_move] + v)/(self.frequency_action[board][best_move]+1)
+        self.frequency_action[board][best_move] += 1
 
         return -state_ev
     
 
-# some notes:
-# - game state needs to have methods is_terminal(), get_reward(), get_legal_moves(), perform_move(move)
-# - expected_reward and frequency_action are coded such that game_state is hashable but it has operations so obv this is wrong. needs to be corrected in future
