@@ -91,16 +91,32 @@ def uci_to_tensor(uci_string: str) -> torch.Tensor:
     return final
 
 
-def extract_fens_grouped_with_moves(pgn_path) -> list[str, str]:
+def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, str]]:
     """
-    Takes in a pgn path and returns list[list[FEN_in_tensor,move_played]]
+    Takes in a PGN path and returns list[list[FEN, move_played, winner]]
+    Prints progress as "xx% done" without external libraries.
     """
+    # First, count total games
+    total_games = 0
+    with open(pgn_path, "r") as f:
+        while chess.pgn.read_game(f):
+            total_games += 1
+            print(f"Total games: {total_games}")
+            if total_games >= max_games:
+                break
+    total_games = min(total_games, max_games)
+
     all_fens = []
-    with open(pgn_path, "r") as pgn_file:
-        while True:
-            game = chess.pgn.read_game(pgn_file)
+    with open(pgn_path, "r") as f:
+        for i in range(total_games):
+            game = chess.pgn.read_game(f)
             if game is None:
                 break
+
+            # Simple progress
+            percent = (i + 1) / total_games * 100
+            print(f"{percent:.2f}% done")
+
             board = game.board()
             game_fens = []
 
@@ -108,12 +124,14 @@ def extract_fens_grouped_with_moves(pgn_path) -> list[str, str]:
             winner = cases[game.headers["Result"]]
 
             for move in game.mainline_moves():
-                data_pair = [board.fen(), move.uci(), winner]
-                game_fens.append(data_pair)
+                game_fens.append([board.fen(), move.uci(), winner])
                 board.push(move)
 
             all_fens.append(game_fens)
+
+    print("Done!")
     return all_fens
+
 
 
 # number of possible encodings with the above is:
@@ -174,15 +192,15 @@ def label_to_move_table():
 # print(label_to_move_table()[16554])
 
 
-def generate_dataset_from_pgn(pgn_path: str) -> list[torch.Tensor, torch.Tensor]:
+def generate_dataset_from_pgn(pgn_path: str, max_games=100) -> list[torch.Tensor, torch.Tensor]:
     """
     Takes in a pgn file path and returns a list of [torch.Tensor(8,8,12), torch.Tensor(2,8,8,5)].
     First tensor is the board state before the move.
     Second tensor is the move made from that position as encoded following uci_to_tensor.
     """
-    all_fens = extract_fens_grouped_with_moves(pgn_path)
+    all_fens = extract_fens_grouped_with_moves(pgn_path, max_games=max_games)
     dataset = []
-    for game in all_fens:
+    for index, game in enumerate(all_fens):
         for data in game:
             fen = data[0]
             move = data[1]
@@ -194,9 +212,12 @@ def generate_dataset_from_pgn(pgn_path: str) -> list[torch.Tensor, torch.Tensor]
 
             dataset.append([board, move, winner])
 
+        if index % 100 == 0:
+            print(f"Processed {index/len(all_fens)*100}% of games.")
+
     return dataset
 
 
 # test
-dataset = generate_dataset_from_pgn("masaurus101-white.pgn")
-print(len(dataset[0]))
+# dataset = generate_dataset_from_pgn("Team2/masaurus101-white.pgn")
+# print(len(dataset[0]))
