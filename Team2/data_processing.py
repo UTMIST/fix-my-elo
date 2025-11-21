@@ -60,27 +60,6 @@ def extract_fens_from_pgn(pgn_path):
     return all_fens
 
 
-def extract_fens_grouped_with_moves(pgn_path):
-    """
-    Takes in a pgn path and returns list[list[FEN_in_tensor,move_played]]
-    """
-    all_fens = []
-    with open(pgn_path, "r") as pgn_file:
-        while True:
-            game = chess.pgn.read_game(pgn_file)
-            if game is None:
-                break
-            board = game.board()
-            game_fens = []
-            for move in game.mainline_moves():
-                data_pair = [board.fen(), move.uci()]
-                game_fens.append(data_pair)
-                board.push(move)
-
-            all_fens.append(game_fens)
-    return all_fens
-
-
 def uci_to_tensor(uci_string: str) -> torch.Tensor:
     """Takes in a uci move string and returns a 2x8x8x5 tensor.
     3->board to move from/to + promotion
@@ -124,8 +103,12 @@ def extract_fens_grouped_with_moves(pgn_path) -> list[str, str]:
                 break
             board = game.board()
             game_fens = []
+
+            cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
+            winner = cases[game.headers["Result"]]
+
             for move in game.mainline_moves():
-                data_pair = [board.fen(), move.uci()]
+                data_pair = [board.fen(), move.uci(), winner]
                 game_fens.append(data_pair)
                 board.push(move)
 
@@ -195,7 +178,7 @@ def generate_dataset_from_pgn(pgn_path: str) -> list[torch.Tensor, torch.Tensor]
     """
     Takes in a pgn file path and returns a list of [torch.Tensor(8,8,12), torch.Tensor(2,8,8,5)].
     First tensor is the board state before the move.
-    Second tessor is the move made from that position as encoded following uci_to_tensor.
+    Second tensor is the move made from that position as encoded following uci_to_tensor.
     """
     all_fens = extract_fens_grouped_with_moves(pgn_path)
     dataset = []
@@ -203,16 +186,17 @@ def generate_dataset_from_pgn(pgn_path: str) -> list[torch.Tensor, torch.Tensor]
         for data in game:
             fen = data[0]
             move = data[1]
+            winner = data[2]
 
             board = fen_to_board(fen)
             move_tensor = uci_to_tensor(move)
-            label = move_tensor_to_label(move_tensor)
+            move = move_tensor_to_label(move_tensor)
 
-            dataset.append([board, label])
+            dataset.append([board, move, winner])
 
     return dataset
 
 
 # test
-# dataset = generate_dataset_from_pgn("Team2/masaurus101-white.pgn")
-# print(dataset[0])
+dataset = generate_dataset_from_pgn("masaurus101-white.pgn")
+print(len(dataset[0]))

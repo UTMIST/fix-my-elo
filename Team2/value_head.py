@@ -1,5 +1,7 @@
 import torch
 from torch import nn
+import torch.functional as F
+
 
 class ValueHead(nn.Module):
 
