@@ -21,22 +21,27 @@ def fen_to_board_tensor(fen):
         "k": 11,
     }
 
+    player = fen.split(" ")[1]
     fen = fen.split(" ")[0]
     fen = fen.split("/")
 
-    board = torch.zeros((8, 8, 12), dtype=torch.float32)
+    board = torch.zeros((13, 8, 8), dtype=torch.float32)
 
-    for rank in range(8):
-        col = 0
-        while col < len(fen[rank]):
-            for char in fen[rank]:
+    # scan each rank at a time to see if the chosen piece is there
+    for piece in range(12):
+        for row in range(8):
+            col = 0
+            for char in fen[row]:
                 if char.isdigit():
                     col += int(char)
                 else:
-                    board[rank][col][
-                        key[char]
-                    ] = 1  # change the value of 12 entry vector
+                    if key[char] == piece:
+                        board[piece, row, col] = 1
                     col += 1
+    if player == "w":
+        board[12, :, :] = 1  # white to move
+    else:
+        board[12, :, :]= -1  # black to move
     return board
 
 
@@ -94,7 +99,6 @@ def uci_to_tensor(uci_string: str) -> torch.Tensor:
 def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, str]]:
     """
     Takes in a PGN path and returns list[list[FEN, move_played, winner]]
-    Prints progress as "xx% done" without external libraries.
     """
     # First, count total games
     total_games = 0
@@ -114,7 +118,7 @@ def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, s
                 break
 
             percent = (i + 1) / total_games * 100
-            print(f"{percent:.2f}% done")
+            print(f"extracting fens with moves: {percent:.2f}% done")
 
             board = game.board()
             game_fens = []
@@ -132,8 +136,6 @@ def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, s
                 current_player_eval *= -1
 
             all_fens.append(game_fens)
-
-    print("Done!")
     return all_fens
 
 
@@ -199,7 +201,7 @@ def generate_dataset_from_pgn(
     pgn_path: str, max_games=100
 ) -> list[torch.Tensor, torch.Tensor]:
     """
-    Takes in a pgn file path and returns a list of [torch.Tensor(8,8,12), torch.Tensor(2,8,8,5)].
+    Takes in a pgn file path and returns a list of [torch.Tensor(12,8,8), torch.Tensor(2,8,8,5)].
     First tensor is the board state before the move.
     Second tensor is the move made from that position as encoded following uci_to_tensor.
     """
@@ -218,12 +220,13 @@ def generate_dataset_from_pgn(
             dataset.append([board, move, winner])
 
         if index % 100 == 0:
-            print(f"Processed {index/len(all_fens)*100}% of games.")
+            print(f"dataset generation: processed {index/len(all_fens)*100}% of games.")
 
     return dataset
 
-
-# test
-# dataset = generate_dataset_from_pgn("Team2/masaurus101-white.pgn")
-# print(dataset[0])
-# print(dataset[1])
+if __name__ == "__main__":
+    # test
+    dataset = generate_dataset_from_pgn("Team2/masaurus101-white.pgn")
+    print(dataset[0])
+    print(dataset[1])
+    print(dataset[2])
