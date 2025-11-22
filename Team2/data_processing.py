@@ -3,8 +3,8 @@ import chess.pgn
 import torch
 import string
 
-
-def fen_to_board(fen):
+# NEED TO ADD COLOUR LAYER IN ENCODING TO INDICATE WHOSE TURN IT IS
+def fen_to_board_tensor(fen):
 
     key = {
         "P": 0,
@@ -113,7 +113,6 @@ def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, s
             if game is None:
                 break
 
-            # Simple progress
             percent = (i + 1) / total_games * 100
             print(f"{percent:.2f}% done")
 
@@ -123,15 +122,19 @@ def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, s
             cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
             winner = cases[game.headers["Result"]]
 
+            current_player_eval = 1  # flip evaluation to reflect whether the CURRENT player eventually won or not
+            # we want to know if the current player won, as position eval depends on whose turn it is
             for move in game.mainline_moves():
-                game_fens.append([board.fen(), move.uci(), winner])
+                game_fens.append(
+                    [board.fen(), move.uci(), current_player_eval * winner]
+                )
                 board.push(move)
+                current_player_eval *= -1
 
             all_fens.append(game_fens)
 
     print("Done!")
     return all_fens
-
 
 
 # number of possible encodings with the above is:
@@ -192,7 +195,9 @@ def label_to_move_table():
 # print(label_to_move_table()[16554])
 
 
-def generate_dataset_from_pgn(pgn_path: str, max_games=100) -> list[torch.Tensor, torch.Tensor]:
+def generate_dataset_from_pgn(
+    pgn_path: str, max_games=100
+) -> list[torch.Tensor, torch.Tensor]:
     """
     Takes in a pgn file path and returns a list of [torch.Tensor(8,8,12), torch.Tensor(2,8,8,5)].
     First tensor is the board state before the move.
@@ -206,7 +211,7 @@ def generate_dataset_from_pgn(pgn_path: str, max_games=100) -> list[torch.Tensor
             move = data[1]
             winner = data[2]
 
-            board = fen_to_board(fen)
+            board = fen_to_board_tensor(fen)
             move_tensor = uci_to_tensor(move)
             move = move_tensor_to_label(move_tensor)
 
@@ -220,4 +225,5 @@ def generate_dataset_from_pgn(pgn_path: str, max_games=100) -> list[torch.Tensor
 
 # test
 # dataset = generate_dataset_from_pgn("Team2/masaurus101-white.pgn")
-# print(len(dataset[0]))
+# print(dataset[0])
+# print(dataset[1])
