@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import chess
+import chess.pgn
 import numpy as np
 from encoders import MoveEncoder, ChessBoardEncoder
 from torch.utils.data import Dataset, DataLoader
@@ -65,6 +66,7 @@ def train_policy_net(model: PolicyNet, dataset: ChessDataset, epochs: int = 10, 
         print(f'Epoch [{epoch + 1}/{epochs}] completed. Average Loss: {avg_loss}')
 
 if __name__ == "__main__":
+
     model = PolicyNet(num_filters=128)  # Smaller for demo
     print(f"Model has {sum(p.numel() for p in model.parameters())} parameters")
 
@@ -96,6 +98,8 @@ if __name__ == "__main__":
     )
 
     # 5. Make a prediction
-    test_board = chess.Board()
+    file_name = "../data/sample_data.pgn"
+    pgn_file = open(file_name)
+    test_board = chess.pgn.read_game(pgn_file).board()
     predicted_move = model.predict(test_board)
     print(f"Predicted move: {predicted_move}")
