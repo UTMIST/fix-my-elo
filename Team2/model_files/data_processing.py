@@ -2,6 +2,7 @@ import chess
 import chess.pgn
 import torch
 import string
+import io
 
 # NEED TO ADD COLOUR LAYER IN ENCODING TO INDICATE WHOSE TURN IT IS
 def fen_to_board_tensor(fen):
@@ -51,7 +52,10 @@ def extract_fens_from_pgn(pgn_path):
     a list containing lists of all positions from each game in FEN format."""
 
     all_fens = []
-    with open(pgn_path, "r") as pgn_file:
+    with open(pgn_path, "rb") as f:
+        raw = f.read()
+        text = raw.decode("utf-8", errors="ignore")
+        pgn_file = io.StringIO(text)
         while True:
             game = chess.pgn.read_game(pgn_file)
             if game is None:
@@ -102,8 +106,11 @@ def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, s
     """
     # First, count total games
     total_games = 0
-    with open(pgn_path, "r") as f:
-        while chess.pgn.read_game(f):
+    with open(pgn_path, "rb") as f:
+        raw = f.read()
+        text = raw.decode("utf-8", errors="ignore")
+        pgn_file = io.StringIO(text)
+        while chess.pgn.read_game(pgn_file):
             total_games += 1
             print(f"Total games: {total_games}")
             if total_games >= max_games:
@@ -111,9 +118,12 @@ def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, s
     total_games = min(total_games, max_games)
 
     all_fens = []
-    with open(pgn_path, "r") as f:
+    with open(pgn_path, "rb") as f:
+        raw = f.read()
+        text = raw.decode("utf-8", errors="ignore")
+        pgn_file = io.StringIO(text)
         for i in range(total_games):
-            game = chess.pgn.read_game(f)
+            game = chess.pgn.read_game(pgn_file)
             if game is None:
                 break
 

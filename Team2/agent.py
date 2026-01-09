@@ -1,11 +1,15 @@
 import chess
 import random
+import os
 import numpy as np
+import pickle
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
+from multiprocessing import get_context
 from monte_carlo_tree_search import Monte_Carlo_Tree_Search
 from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
 from data_processing import fen_to_board_tensor, uci_to_tensor, move_tensor_to_label
@@ -20,6 +24,7 @@ class Agent:
     def __init__(self, policy_value_network, c_puct):
         self.policy_value_network = policy_value_network
         self.c_puct = c_puct
+        self.rng = np.random.default_rng()
 
 
     def select_move(self, game_state, num_simulations):
@@ -34,7 +39,7 @@ class Agent:
         return max(mcts.frequency_action[board], key=mcts.frequency_action[board].get)
      
 
-    def mcts_self_play(self, num_simulations):
+    def mcts_self_play(self, num_simulations, resign_moves, resign_threshold):
         '''
         executes an iteration of MCTS for the given game state
         num_simulations: number of MCTS simulations to run per move  
@@ -42,27 +47,54 @@ class Agent:
 
         game_state = chess.Board()
         examples = [] # stores state, move, and winner for training
-
+        consecutive_high_value_white = 0 # counting no. moves with high value position for auto resigning
+        consecutive_high_value_black = 0
+        device = next(self.policy_value_network.parameters()).device
+        
         while True: # infinite loop until terminal state
             board = game_state.fen()
+            board_tensor = fen_to_board_tensor(board).unsqueeze(0).to(device)
             
             # run MCTS simulations to find policy for current state
             mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, set())
             for _ in range(num_simulations): 
                 mcts.search(game_state.copy())
+                
             
             # find optimal move based on visit frequencies (policy)
             freqs = np.array(list(mcts.frequency_action[board].values()), dtype=np.float32)
             probs = freqs / freqs.sum()
-            move = np.random.default_rng().choice(list(mcts.frequency_action[board].keys()), p=probs)
+            move = self.rng.choice(list(mcts.frequency_action[board].keys()), p=probs)
             
             # store training example
-            examples.append([fen_to_board_tensor(board), move_tensor_to_label(uci_to_tensor(move)), None]) # winner to be assigned later
+            examples.append([board_tensor.squeeze(0), move_tensor_to_label(uci_to_tensor(move)), None]) # winner to be assigned later
             
             game_state.push_uci(move) # perform selected move
-            print(f"move: {len(examples)}, {move} | board: {board}")
+            
 
-            if game_state.is_game_over(): # check for terminal state
+            # end game ("resign") if value is higher than resign_threshold for resign_moves moves, speeds up training + ensures clean training data for less-trained endgame positions with huge material advantage and not many pieces where moves are pretty random
+            with torch.no_grad():
+                p, v = self.policy_value_network(board_tensor)
+            if v > resign_threshold:
+                consecutive_high_value_white += 1
+            else:
+                consecutive_high_value_white = 0
+                
+            if v < -resign_threshold:
+                consecutive_high_value_black += 1
+            else:
+                consecutive_high_value_black = 0
+
+            if consecutive_high_value_white >= resign_moves or consecutive_high_value_black >= resign_moves:
+                reward = 1 if consecutive_high_value_white >= resign_moves else -1
+                for example in examples: # assign rewards (winners) to exmaples
+                    example[2] = reward
+                    
+                return examples
+        
+        
+            # end loop with terminal state
+            if game_state.is_game_over(): 
                 cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
                 reward = cases[game_state.result()]
                 
@@ -72,32 +104,68 @@ class Agent:
                 return examples
             
     
-    def training_self_play(self, num_training_iterations, num_games, train_to_test_ratio, num_simulations, num_testing_games, improvement_threshold):
+    def training_self_play(self, num_training_iterations, num_games, train_to_test_ratio, num_simulations, resign_moves, resign_threshold, num_testing_games, improvement_threshold):
         '''
         performs self-play training to improve the policy network
         '''
         
         # define policy network
+        SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+        MODEL_PATH = os.path.join(SCRIPT_DIR, "model_files", "sl_policy_value_network4.pth")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         new_nn = SLPolicyValueNetwork().to(device)
-        new_nn.load_state_dict(torch.load("model_files/sl_policy_value_network4.pth", map_location=torch.device("cpu")))
+        new_nn.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device("cpu")))
         policy_criterion = nn.CrossEntropyLoss() # softmax regression loss function
         value_criterion = nn.MSELoss() # use to use logistic loss but expects labels to be 0 or 1, not a range betwen -1 and 1
         optimizer = optim.Adam(new_nn.parameters(), lr=0.1e-4)
+        start_time = time.time()
         
 
         # train for specified number of iterations
+        new_nn.train()
         examples = []
         
         for epoch in range(num_training_iterations):
-            for i in range(num_games): # create training examples through self-play
-                print(f"self-play game: {i+1}")
-                examples += self.mcts_self_play(num_simulations) # add current game to training examples
-                
+            print(f'starting training iteration {epoch+1}/{num_training_iterations}')
+            print('--------------------------------')
+            
+            # create training examples through self-play
+            model_state_dict = {
+                k: v.cpu()
+                for k, v in self.policy_value_network.state_dict().items()
+            }
+
+            args = [
+                (
+                    model_state_dict,
+                    self.c_puct,
+                    num_simulations,
+                    resign_moves,
+                    resign_threshold,
+                )
+                for _ in range(num_games)
+            ]
+
+            ctx = get_context("spawn")  # required for PyTorch safety
+            
+            batch_size = 4 # fastest on vincent's cpu after a lot of testing
+            output_path = "game_examples.pkl" # checkpoint examples
+            print(f"completed {0}/{num_games} games, {time.time() - start_time:.2f} seconds elapsed")
+            
+            with open(output_path, "ab") as f, ctx.Pool(processes=batch_size) as pool:
+                for i, game_examples in enumerate(pool.imap_unordered(self_play_worker, args), start=1): # run self-play in parallel
+                    examples.extend(game_examples)
+                    pickle.dump(game_examples, f)
+
+                    if i % batch_size == 0 or i == num_games:
+                        print(f"completed {i}/{num_games} games, {time.time() - start_time:.2f} seconds elapsed")
+            
+
             # create train and test datasets
             train_dataloader, test_dataloader = examples_to_dataset(examples, train_to_test_ratio)
             
             # train model
+            print('--------------------------------')
             for batch_idx, (data, target) in enumerate(train_dataloader):
                 data = data.to(device)
                 batch_move_target = target[:, 0].to(device)
@@ -142,6 +210,9 @@ class Agent:
                 "batch": batch_idx,
             }, "checkpoint3.pth")
             print('model checkpoint saved')
+            print('--------------------------------')
+            
+            new_nn.train()
     
 
         # if new network is better, update current policy network
@@ -159,6 +230,36 @@ class Agent:
 
 
 # agent training helper functions
+def self_play_worker(args):
+    '''
+    worker function for multiprocessing self-play
+    '''
+    (
+        model_state_dict,
+        c_puct,
+        num_simulations,
+        resign_moves,
+        resign_threshold,
+    ) = args
+
+    # force CPU
+    device = torch.device("cpu")
+
+    # load model locally
+    policy_value_network = SLPolicyValueNetwork().to(device)
+    policy_value_network.load_state_dict(model_state_dict)
+    policy_value_network.eval()
+
+    agent = Agent(policy_value_network, c_puct)
+
+    with torch.no_grad():
+        return agent.mcts_self_play(
+            num_simulations,
+            resign_moves,
+            resign_threshold
+        )
+        
+        
 def pit(policy_value_network1, policy_value_network2, num_games, num_simulations):
     '''
     pit two chess agents w/ two different neural net bases against eachother by playing games, returns how many games nn1 wins against nn2

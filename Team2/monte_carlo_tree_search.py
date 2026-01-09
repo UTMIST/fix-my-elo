@@ -1,4 +1,5 @@
 import math
+import torch
 from collections import defaultdict
 from data_processing import move_tensor_to_label, uci_to_tensor, fen_to_board_tensor
 
@@ -23,11 +24,13 @@ class Monte_Carlo_Tree_Search:
         self.expected_reward = defaultdict(lambda: defaultdict(float))
         self.frequency_action = defaultdict(lambda: defaultdict(int))
         self.visited = visited
+        self.policy_cache = {}  
+        self.legal_moves_cache = {}
     
     
     def search(self, game_state):
         '''
-        Performs a single iteration of MCTS, returning the value of the game state and updating expected_reward and frequency_action.
+        Performs a single iteration (rollout) of MCTS, returning the value of the game state and updating expected_reward and frequency_action.
         '''
 
         board = game_state.fen()  # get FEN representation of the board
@@ -36,11 +39,15 @@ class Monte_Carlo_Tree_Search:
         if game_state.is_game_over():
             return -1
         
-        # if state not visited, initialize node with value network
+        # if state not visited, initialize node
         if board not in self.visited:
             self.visited.add(board)
             board_tensor = fen_to_board_tensor(board).unsqueeze(0).to(self.device)
-            p, v = self.policy_value_network(board_tensor)
+            with torch.no_grad():
+                p, v = self.policy_value_network(board_tensor) # calculate value for ev calculation from original state
+            
+            # cache policy for faster runtime
+            self.policy_cache[board] = p
             return -v
 
 
@@ -49,20 +56,29 @@ class Monte_Carlo_Tree_Search:
 
 
         # iterate through legal moves to find best UCT
-        legal_moves = [move.uci() for move in game_state.legal_moves]
-        board_tensor = fen_to_board_tensor(board).unsqueeze(0).to(self.device)
-        p, v = self.policy_value_network(board_tensor)
+        if board in self.legal_moves_cache:
+            legal_moves = self.legal_moves_cache[board]
+        else:
+            legal_moves = [move.uci() for move in game_state.legal_moves]
+            self.legal_moves_cache[board] = legal_moves
 
+        # UCT variables
+        p = self.policy_cache[board]
+        freq_board = self.frequency_action[board]
+        board_ev = self.expected_reward[board]
+        sqrt_freqs = math.sqrt(sum(freq_board.values()))
+        c_puct = self.c_puct
+        
         for move in legal_moves:
             # compute UCT value
             move_label = move_tensor_to_label(uci_to_tensor(move))
             initial_probability = p[0][move_label].item()
-            uct = self.expected_reward[board][move] + self.c_puct * initial_probability * math.sqrt(sum(self.frequency_action[board].values())) / (1 + self.frequency_action[board][move])
-           
+            uct = uct = board_ev[move] + c_puct * initial_probability * sqrt_freqs / (1 + freq_board[move])
+            
             if uct > max_uct:
                 max_uct = uct
                 best_move = move
-
+            
 
         # recursively search the next state
         game_state.push_uci(best_move)
@@ -73,5 +89,3 @@ class Monte_Carlo_Tree_Search:
         self.frequency_action[board][best_move] += 1
 
         return -state_ev
-    
-
