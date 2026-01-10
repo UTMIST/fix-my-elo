@@ -2,7 +2,9 @@ ToDos:
 - manual game intervention
 - chatbox
 - Reload game when new png is loaded automatically
-- Integrate with engine
+- Integrate with engine (use stocksfish API for now)
+- Allow user to make moves on the board
+- Create variations
 
 ## Getting Started
 
