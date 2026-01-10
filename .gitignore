@@ -1,5 +1,6 @@
 **/.venv/
 .DS_Store
+.vscode
 
 /Team2/__pycache__
 /Team2/pgn_files/LumbrasGigaBase_OTB_2020-2024.pgn
