@@ -8,7 +8,7 @@
 //   );
 // }
 
-import PGNViewer from '../components/PGNViewer.jsx'
+import PGNViewer from '../components/main/MainViewer.jsx'
 import TextChessboard from '../components/TextChessboard.jsx'
 
 export default function Home() {
