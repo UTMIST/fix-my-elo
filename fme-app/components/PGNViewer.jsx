@@ -2,20 +2,19 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { Chess } from "chess.js";
-import { Chessboard } from "react-chessboard";
+import ChessBoard from "./ChessBoard";
+import "./PGNViewer.css";
 
 export default function PGNViewer() {
-  const [fen, setFen] = useState(new Chess().fen());
   const [games, setGames] = useState([]);
   const [currentGameIndex, setCurrentGameIndex] = useState(0);
   const [currentMoveIndex, setCurrentMoveIndex] = useState(-1);
   const [boardOrientation, setBoardOrientation] = useState("white");
   const [pgnInput, setPgnInput] = useState("");
   const [error, setError] = useState("");
-
-  // Auto-play state
   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
   const [autoPlaySpeed, setAutoPlaySpeed] = useState(1000);
+  
   const autoPlayIntervalRef = useRef(null);
   const moveListRef = useRef(null);
 
@@ -95,7 +94,6 @@ export default function PGNViewer() {
     }
   };
 
-  // Initialize with sample PGN
   useEffect(() => {
     const samplePGN = `[Event "Tata Steel India Rapid"]
 [Site "Kolkata IND"]
@@ -116,51 +114,16 @@ f4 29. Qe2 Bxg2 30. Rxg2 Ne6 31. Bb6 Kg7 32. Qd3 d4 33. Bxd4 g4 34. gxf4 Nxf4
     loadPGN(samplePGN);
   }, []);
 
-  // Update game position based on current move
   useEffect(() => {
-    if (games.length === 0) return;
-
-    const currentGame = games[currentGameIndex];
-    if (!currentGame || !currentGame.moves) return;
-
-    // Create fresh game
-    const newGame = new Chess();
-
-    console.log("Updating to move index:", currentMoveIndex);
-    console.log("Total moves:", currentGame.moves.length);
-
-    // Apply all moves up to currentMoveIndex
-    for (let i = 0; i <= currentMoveIndex; i++) {
-      if (i >= 0 && i < currentGame.moves.length) {
-        const moveToMake = currentGame.moves[i];
-
-        try {
-          const result = newGame.move(moveToMake);
-          if (!result) {
-            console.error(`Failed to make move: ${moveToMake}`);
-          }
-        } catch (e) {
-          console.error(`Error making move ${moveToMake}:`, e);
-        }
-      }
-    }
-
-    const finalFen = newGame.fen();
-    console.log("Final FEN:", finalFen);
-    setFen(finalFen);
-
-    // Auto-scroll logic
-    const activeMoveElement =
-      moveListRef.current?.querySelector(".active-move");
+    const activeMoveElement = moveListRef.current?.querySelector(".active-move");
     if (activeMoveElement) {
       activeMoveElement.scrollIntoView({
         behavior: "smooth",
         block: "nearest",
       });
     }
-  }, [currentMoveIndex, currentGameIndex, games]);
+  }, [currentMoveIndex]);
 
-  // Autoplay logic
   useEffect(() => {
     if (isAutoPlaying) {
       autoPlayIntervalRef.current = setInterval(() => {
@@ -177,12 +140,8 @@ f4 29. Qe2 Bxg2 30. Rxg2 Ne6 31. Bb6 Kg7 32. Qd3 d4 33. Bxd4 g4 34. gxf4 Nxf4
     return () => clearInterval(autoPlayIntervalRef.current);
   }, [isAutoPlaying, autoPlaySpeed, currentGameIndex, games]);
 
-  // Navigation
   const goToMove = (index) => {
     const maxIndex = (games[currentGameIndex]?.moves.length || 0) - 1;
-
-    console.log("goToMove called with:", index, "Max:", maxIndex);
-
     if (index < -1) {
       setCurrentMoveIndex(-1);
     } else if (index > maxIndex) {
@@ -194,51 +153,33 @@ f4 29. Qe2 Bxg2 30. Rxg2 Ne6 31. Bb6 Kg7 32. Qd3 d4 33. Bxd4 g4 34. gxf4 Nxf4
 
   const currentGame = games[currentGameIndex] || { headers: {}, moves: [] };
 
-  // Debug log for rendering
-  useEffect(() => {
-    console.log("Rendering Chessboard with FEN:", fen);
-    console.log("Board orientation:", boardOrientation);
-  }, [fen, boardOrientation]);
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold text-white mb-8 text-center">
-          PGN Chess Viewer
-        </h1>
+    <div className="pgn-viewer">
+      <div className="pgn-container">
+        <h1 className="pgn-title">Fix-My-Elo</h1>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="pgn-grid">
           {/* Left: Load PGN */}
-          <div className="bg-slate-800 rounded-lg p-6 shadow-xl border border-slate-700 h-fit">
-            <h2 className="text-2xl font-semibold text-white mb-4">Load PGN</h2>
+          <div className="pgn-panel">
+            <h2 className="panel-title">Load PGN</h2>
             <textarea
               value={pgnInput}
               onChange={(e) => setPgnInput(e.target.value)}
-              className="w-full h-48 bg-slate-900 text-white rounded p-3 border border-slate-600 font-mono text-sm resize-none"
+              className="pgn-textarea"
             />
-            <button
-              onClick={() => loadPGN(pgnInput)}
-              className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded transition-colors"
-            >
+            <button onClick={() => loadPGN(pgnInput)} className="btn-load">
               Load PGN
             </button>
 
-            {error && (
-              <div className="mt-4 bg-red-900/50 border border-red-500 text-red-200 rounded p-3 text-sm">
-                {error}
-              </div>
-            )}
+            {error && <div className="error-message">{error}</div>}
 
             {Object.keys(currentGame.headers).length > 0 && (
-              <div className="mt-6 bg-slate-900 rounded p-4 border border-slate-600">
-                <h3 className="text-lg font-semibold text-white mb-2">
-                  Game Info
-                </h3>
-                <div className="space-y-1 text-sm max-h-64 overflow-y-auto">
+              <div className="game-info">
+                <h3 className="info-title">Game Info</h3>
+                <div className="info-content">
                   {Object.entries(currentGame.headers).map(([k, v]) => (
-                    <div key={k} className="text-slate-300">
-                      <span className="font-semibold text-blue-400">{k}:</span>{" "}
-                      {v}
+                    <div key={k} className="info-row">
+                      <span className="info-key">{k}:</span> {v}
                     </div>
                   ))}
                 </div>
@@ -247,124 +188,52 @@ f4 29. Qe2 Bxg2 30. Rxg2 Ne6 31. Bb6 Kg7 32. Qd3 d4 33. Bxd4 g4 34. gxf4 Nxf4
           </div>
 
           {/* Center: Board */}
-          <div className="bg-slate-800 rounded-lg p-6 shadow-xl border border-slate-700">
-            <div className="w-full aspect-square max-w-[500px] mx-auto">
-              <Chessboard
-                key={`${currentGameIndex}-${currentMoveIndex}`}
-                position={fen}
+          <div className="pgn-panel board-panel">
+            <div className="board-container">
+              <ChessBoard
+                moves={currentGame.moves}
+                currentMoveIndex={currentMoveIndex}
                 boardOrientation={boardOrientation}
-                boardWidth={500}
-                arePiecesDraggable={false}
-                animationDuration={200}
-                customBoardStyle={{
-                  borderRadius: '4px',
-                  boxShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
-                }}
               />
             </div>
 
-            <div className="flex justify-center gap-2 mt-6">
-              <button
-                onClick={() => {
-                  setIsAutoPlaying(false);
-                  goToMove(-1);
-                }}
-                className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded"
-              >
+            <div className="controls">
+              <button onClick={() => { setIsAutoPlaying(false); goToMove(-1); }} className="btn-nav">
                 ⏮
               </button>
-              <button
-                onClick={() => {
-                  setIsAutoPlaying(false);
-                  goToMove(currentMoveIndex - 1);
-                }}
-                className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded"
-              >
+              <button onClick={() => { setIsAutoPlaying(false); goToMove(currentMoveIndex - 1); }} className="btn-nav">
                 ◀
               </button>
-              <button
-                onClick={() => setIsAutoPlaying(!isAutoPlaying)}
-                className={`px-6 py-2 rounded font-bold transition-colors ${
-                  isAutoPlaying
-                    ? "bg-red-600 hover:bg-red-700"
-                    : "bg-green-600 hover:bg-green-700"
-                } text-white`}
-              >
+              <button onClick={() => setIsAutoPlaying(!isAutoPlaying)} className={`btn-play ${isAutoPlaying ? "playing" : ""}`}>
                 {isAutoPlaying ? "Pause" : "Play"}
               </button>
-              <button
-                onClick={() => {
-                  setIsAutoPlaying(false);
-                  goToMove(currentMoveIndex + 1);
-                }}
-                className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded"
-              >
+              <button onClick={() => { setIsAutoPlaying(false); goToMove(currentMoveIndex + 1); }} className="btn-nav">
                 ▶
               </button>
-              <button
-                onClick={() => {
-                  setIsAutoPlaying(false);
-                  goToMove(currentGame.moves.length - 1);
-                }}
-                className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded"
-              >
+              <button onClick={() => { setIsAutoPlaying(false); goToMove(currentGame.moves.length - 1); }} className="btn-nav">
                 ⏭
               </button>
             </div>
 
-            <div className="mt-6 space-y-4">
-              <div className="flex flex-col gap-2">
-                <div className="flex justify-between text-xs text-slate-400">
-                  <span>Playback Speed</span>
-                  <span>{(autoPlaySpeed / 1000).toFixed(1)}s</span>
-                </div>
-                <input
-                  type="range"
-                  min="200"
-                  max="2000"
-                  step="100"
-                  value={autoPlaySpeed}
-                  onChange={(e) => setAutoPlaySpeed(Number(e.target.value))}
-                  className="w-full accent-blue-500"
-                />
-              </div>
-              <button
-                onClick={() =>
-                  setBoardOrientation((o) =>
-                    o === "white" ? "black" : "white"
-                  )
-                }
-                className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded transition-colors"
-              >
-                🔄 Flip Board
+            <div className="board-options">
+              <button onClick={() => setBoardOrientation((o) => o === "white" ? "black" : "white")} className="btn-flip">
+                Flip Board
               </button>
             </div>
           </div>
 
           {/* Right: Moves */}
-          <div className="bg-slate-800 rounded-lg p-6 shadow-xl border border-slate-700 h-[700px] flex flex-col">
-            <h2 className="text-2xl font-semibold text-white mb-4">
-              Moves History
-            </h2>
-            <div
-              ref={moveListRef}
-              className="bg-slate-900 rounded p-4 overflow-y-auto border border-slate-600 flex-1"
-            >
-              <div className="grid grid-cols-2 gap-2">
+          <div className="pgn-panel moves-panel">
+            <h2 className="panel-title">Moves History</h2>
+            <div ref={moveListRef} className="moves-list">
+              <div className="moves-grid">
                 {currentGame.moves.map((move, i) => (
                   <div
                     key={i}
-                    onClick={() => {
-                      setIsAutoPlaying(false);
-                      goToMove(i);
-                    }}
-                    className={`cursor-pointer p-2 rounded text-sm font-mono flex gap-2 transition-colors ${
-                      i === currentMoveIndex
-                        ? "bg-blue-600 text-white active-move"
-                        : "text-slate-300 hover:bg-slate-800"
-                    }`}
+                    onClick={() => { setIsAutoPlaying(false); goToMove(i); }}
+                    className={`move-item ${i === currentMoveIndex ? "active-move" : ""}`}
                   >
-                    <span className="text-slate-500 w-6">
+                    <span className="move-number">
                       {i % 2 === 0 ? `${Math.floor(i / 2) + 1}.` : ""}
                     </span>
                     <span>{move}</span>
