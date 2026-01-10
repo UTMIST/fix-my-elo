@@ -1,8 +1,8 @@
 ToDos:
-    - manual game intervention
-    - chatbox
-    - Reload game when new png is loaded automatically
-    - Integrate with engine
+- manual game intervention
+- chatbox
+- Reload game when new png is loaded automatically
+- Integrate with engine
 
 ## Getting Started
 
