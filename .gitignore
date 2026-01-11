@@ -4,3 +4,6 @@
 /Team2/pgn_files/LumbrasGigaBase_OTB_2020-2024.pgn
 /Team2/model_files/sl_policy_value_network4.pth
 /Team2/model_files/checkpoint2.pth
+/Team2/model_files/sl_policy_value_network5.pth
+/Team2/model_files/sl_policy_value_network_from_mcts_self_play.pth
+game_examples.pkl
