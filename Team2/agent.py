@@ -1,4 +1,5 @@
 import chess
+import chess.pgn
 import random
 import os
 import numpy as np
@@ -13,6 +14,12 @@ from multiprocessing import get_context
 from monte_carlo_tree_search import Monte_Carlo_Tree_Search
 from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
 from data_processing import fen_to_board_tensor, uci_to_tensor, move_tensor_to_label
+
+# allow each worker to only use 1 thread to prevent saturation
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
 
 # mcts chess agent class
@@ -259,7 +266,9 @@ def self_play_worker(args):
 
     # force CPU
     device = torch.device("cpu")
-
+    # 1 thread per worker
+    torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
     # load model locally
     policy_value_network = SLPolicyValueNetwork().to(device)
     policy_value_network.load_state_dict(model_state_dict)
@@ -277,58 +286,79 @@ def self_play_worker(args):
 
 def pit(policy_value_network1, policy_value_network2, num_games, num_simulations, c_puct, dirichlet_alpha, dirichlet_epsilon, temperature):
     '''
-    pit two chess agents w/ two different neural net bases against eachother by playing games, returns how many games nn1 wins against nn2
+    pit two chess agents w/ two different neural net bases against eachother by playing games,
+    returns how many games nn1 wins against nn2
     '''
-    
+
+    os.makedirs("pit_games", exist_ok=True)
+
     agent1 = Agent(policy_value_network1, c_puct, dirichlet_alpha, dirichlet_epsilon)
     agent2 = Agent(policy_value_network2, c_puct, dirichlet_alpha, dirichlet_epsilon)
     wins = 0
-        
-    for i in range(num_games): # play num_games games
+
+    for i in range(num_games):  # play num_games games
         game_state = chess.Board()
-        choice = np.random.default_rng().choice([0, 1]) # random choice for which agent is white or black
+
+        game = chess.pgn.Game()
+        node = game
+
+        choice = np.random.default_rng().choice([0, 1])  # random choice for which agent is white or black
         white = [agent1, agent2][choice]
-        black = [agent1, agent2][1 - choice] # im sure there's a smarter way to do this lmfao
+        black = [agent1, agent2][1 - choice]
+
+        game.headers["White"] = "agent1" if white == agent1 else "agent2"
+        game.headers["Black"] = "agent2" if black == agent2 else "agent1"
+
         move_count = 0
         print(f'playing testing game {i+1}, white: {"agent1" if white == agent1 else "agent2"}, black: {"agent2" if black == agent2 else "agent1"}')
-        
-        while True: # infinite loop until terminal state
+
+        while True:  # infinite loop until terminal state
             # white move
             move = white.select_move(game_state, num_simulations, temperature)
-            game_state.push_uci(move) # perform selected move
+            game_state.push_uci(move)
+            node = node.add_variation(chess.Move.from_uci(move))
             move_count += 1
 
-            if game_state.is_game_over(): # check for terminal state
+            if game_state.is_game_over():
                 cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
                 winner = cases[game_state.result()]
+                game.headers["Result"] = game_state.result()
+
                 print(f'game over after {move_count} moves, result: {game_state.result()}, outcome: {game_state.outcome().termination.name}, board: {game_state.fen()}')
-                
+
                 if agent1 == white:
-                    wins += max(winner, 0) # 1 -> 1, 0 -> 0, -1 -> 0, again im sure theres a smarter way to do this lol
+                    wins += max(winner, 0)
                 else:
                     wins += max(-winner, 0)
-                    
+
                 break
-            
-            
+
             # black move
-            move = black.select_move(game_state, num_simulations, temperature)  # run MCTS simulation to find policy for current state
-            game_state.push_uci(move) # perform selected move
+            move = black.select_move(game_state, num_simulations, temperature)
+            game_state.push_uci(move)
+            node = node.add_variation(chess.Move.from_uci(move))
             move_count += 1
 
-            if game_state.is_game_over(): # check for terminal state
+            if game_state.is_game_over():
                 cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
                 winner = cases[game_state.result()]
+                game.headers["Result"] = game_state.result()
+
                 print(f'game over after {move_count} moves, result: {game_state.result()}, outcome: {game_state.outcome().termination.name}, board: {game_state.fen()}')
-                
+
                 if agent1 == white:
-                    wins += max(winner, 0) # 1 -> 1, 0 -> 0, -1 -> 0, again im sure theres a smarter way to do this lol
+                    wins += max(winner, 0)
                 else:
                     wins += max(-winner, 0)
-                    
+
                 break
+
+        with open(f"pit_games/game_{i+1:03d}.pgn", "w") as f:
+            f.write(str(game))
 
     return wins
+
+
     
     
 def examples_to_dataset(examples, train_to_test_ratio):
