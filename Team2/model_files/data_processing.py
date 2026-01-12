@@ -112,7 +112,8 @@ def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, s
         pgn_file = io.StringIO(text)
         while chess.pgn.read_game(pgn_file):
             total_games += 1
-            print(f"Total games: {total_games}")
+            if total_games % 1000 == 0:
+                print(f"Total games: {total_games}")
             if total_games >= max_games:
                 break
     total_games = min(total_games, max_games)
@@ -128,7 +129,8 @@ def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, s
                 break
 
             percent = (i + 1) / total_games * 100
-            print(f"extracting fens with moves: {percent:.2f}% done")
+            if percent *100 % 10 == 0:
+                print(f"extracting fens with moves: {percent:.2f}% done")
 
             board = game.board()
             game_fens = []
@@ -229,7 +231,7 @@ def generate_dataset_from_pgn(
 
             dataset.append([board, move, winner])
 
-        if index % 100 == 0:
+        if index % 1000 == 0:
             print(f"dataset generation: processed {index/len(all_fens)*100}% of games.")
 
     return dataset
