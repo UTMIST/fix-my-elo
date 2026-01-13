@@ -1,4 +1,7 @@
+import math
+
 import chess
+import chess.pgn
 import torch
 
 
@@ -21,7 +24,7 @@ class ChessBoardEncoder:
         Convert chess.Board to a tensor
 
         Returns:
-          A tensor of shape (12, 8, 8) representing the board state.
+          A tensor of shape (14, 8, 8) representing the board state.
           - first 6 planes for white pieces
           - next 6 planes for black pieces
           - 1 plane for rep count
@@ -91,3 +94,67 @@ class MoveEncoder:
     def index_to_move(self, index: int) -> str | None:
         """Convert an index back to its corresponding chess.Move."""
         return self.indextomove.get(index, None)
+
+class PGNEncoder:
+    """Encodes PGN games into positions and moves for training."""
+
+    @staticmethod
+    def pgn_to_positions_moves(pgn_file: str, limit: int = 0, min_avg_rating: int = 2000) -> tuple[list[chess.Board], list[chess.Move]]:
+        """Convert PGN file to lists of positions and moves for training.
+        Args:
+            pgn_file (str): Path to the PGN file.
+            limit (int): Maximum number of games to process. 0 for no limit.
+            min_avg_rating (int): Minimum average rating of players to include the game.
+        """
+        boards = []
+        moves = []
+        count = 0
+
+        with open(pgn_file, 'r', encoding='utf-8-sig') as pgn_file:
+            while limit == 0 or count <= limit:
+                game = chess.pgn.read_game(pgn_file)
+                if game is None:
+                    break
+
+                count += 1
+                # Extract ratings and result
+                white_rating = int(game.headers.get('WhiteRating', 0))
+                black_rating = int(game.headers.get('BlackRating', 0))
+                avg_rating = (white_rating + black_rating) // 2
+                if avg_rating < min_avg_rating:
+                    continue
+
+                board = game.board()
+
+                for move in game.mainline_moves():
+                    boards.append(board.copy())
+                    moves.append(move)
+                    board.push(move)
+
+                count += 1
+        # print(boards[0:10], moves[0:10])
+        return boards, moves
+
+    @staticmethod
+    def test_train_split(data: tuple[list[chess.Board], list[chess.Move]], split: float) -> tuple[list[chess.Board], list[chess.Move], list[chess.Board], list[chess.Move]]:
+        """Splits the dataset into training and testing sets based on the given split ratio."""
+        if not (0 < split < 1):
+            raise ValueError("Split ratio must be between 0 and 1.")
+
+        train_boards = []
+        train_moves = []
+        test_boards = []
+        test_moves = []
+
+        boards, moves = data
+        split_index = len(boards) * split
+
+        for i in range(len(boards)):
+            if i < split_index:
+                train_boards.append(boards[i])
+                train_moves.append(moves[i])
+            else:
+                test_boards.append(boards[i])
+                test_moves.append(moves[i])
+
+        return train_boards, train_moves, test_boards, test_moves

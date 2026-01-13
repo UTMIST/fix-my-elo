@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import chess
 import chess.pgn
 import numpy as np
-from encoders import MoveEncoder, ChessBoardEncoder
+from encoders import MoveEncoder, ChessBoardEncoder, PGNEncoder
 from torch.utils.data import Dataset, DataLoader
 from typing import List
 from policy_net import PolicyNet
@@ -65,28 +65,40 @@ def train_policy_net(model: PolicyNet, dataset: ChessDataset, epochs: int = 10, 
         avg_loss = total_loss / batches
         print(f'Epoch [{epoch + 1}/{epochs}] completed. Average Loss: {avg_loss}')
 
+def get_accuracy(model: PolicyNet, test_boards: list[chess.Board], testing_moves: list[chess.Move]) -> float:
+    correct = 0
+    for i in range(len(test_boards)):
+        predicted_move = model.predict(test_boards[i])
+        if predicted_move == testing_moves[i]:
+            correct += 1
+
+    return correct / len(test_boards)
+
 if __name__ == "__main__":
 
     model = PolicyNet(num_filters=128)  # Smaller for demo
     print(f"Model has {sum(p.numel() for p in model.parameters())} parameters")
 
-    sample_positions = []
-    sample_moves = []
-    # sample positions
-    board = chess.Board()
-    for _ in range(1000):
-        if not board.is_game_over() and len(list(board.legal_moves)) > 0:
-            legal_moves = list(board.legal_moves)
-            move = legal_moves[0]
-            # uses first legal move, should be replaced with MCTS output or actual dataset
+    data = PGNEncoder.pgn_to_positions_moves("../data/sample_data.pgn", limit = 0, min_avg_rating=0)
+    train_positions, train_moves, test_positions, test_moves = PGNEncoder.test_train_split(data, 0.7)
+    print("Train Size: ", len(train_positions))
+    print("Test Size: ", len(test_positions))
 
-            sample_positions.append(board.copy())
-            sample_moves.append(move)
-            board.push(move)
-        else:
-            board = chess.Board()
+    # # sample positions
+    # board = chess.Board()
+    # for _ in range(1000):
+    #     if not board.is_game_over() and len(list(board.legal_moves)) > 0:
+    #         legal_moves = list(board.legal_moves)
+    #         move = legal_moves[0]
+    #         # uses first legal move, should be replaced with MCTS output or actual dataset
+    #
+    #         sample_positions.append(board.copy())
+    #         sample_moves.append(move)
+    #         board.push(move)
+    #     else:
+    #         board = chess.Board()
 
-    dataset = ChessDataset(sample_positions, sample_moves)
+    dataset = ChessDataset(train_positions, train_moves)
     print(f"Dataset size: {len(dataset)}")
 
     train_policy_net(
@@ -97,9 +109,7 @@ if __name__ == "__main__":
         learning_rate=0.001
     )
 
-    # 5. Make a prediction
-    file_name = "../data/sample_data.pgn"
-    pgn_file = open(file_name)
-    test_board = chess.pgn.read_game(pgn_file).board()
-    predicted_move = model.predict(test_board)
-    print(f"Predicted move: {predicted_move}")
+    torch.save(model.state_dict(), "../data/policy_net.pth")
+
+    accuracy = get_accuracy(model, test_positions, test_moves)
+    print(f"Test Accuracy: {accuracy * 100:.2f}%")
