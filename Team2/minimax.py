@@ -14,33 +14,46 @@ class MiniMax:
         """
         self.policy_value_network = policy_value_network
         self.visited = visited
+        self.calculated = 0
 
     def search(self, game_state: chess.Board, depth):
         """
         starting from the root (chess.board), calculates the best move up to depth <depth>
         returns the best move's eval and the move itself.
         """
-
+        device = next(self.policy_value_network.parameters()).device
+        self.policy_value_network.eval()
         board = game_state.fen()
 
-        # for the player who would've moved, did they win or lose?
-        if game_state.is_game_over():
-            turn = 1
-            if not game_state.turn:
-                turn = -1
+        self.calculated += 1
+        if self.calculated % 100 == 0:
+            print(f"checked {self.calculated} moves!")
 
-            if game_state.winner == chess.WHITE:
-                return 1 * turn
-            elif game_state.winner == chess.BLACK:
-                return -1 * turn
+        # for the player who would've moved, did they win or lose?
+        if game_state.outcome() is not None:
+            turn = 1
+            if not game_state.turn == chess.WHITE:
+                turn = -1
+            
+            if game_state.outcome().winner == chess.WHITE:
+                print("win detected!")
+                return 1 * turn, None
+            elif game_state.outcome().winner == chess.BLACK:
+                print("loss detected!")
+                return -1 * turn, None
             else:
+                print("draw detected!")
                 return 0, None
 
         # if depth limit reached, return eval
         if depth == 0:
-            board_tensor = fen_to_board_tensor(board).unsqueeze(0)
+            if board in self.visited:
+                # print("saved calculation!")
+                return self.visited[board]
+            board_tensor = fen_to_board_tensor(board).unsqueeze(0).to(device)
             p, v = self.policy_value_network(board_tensor)
-            return -v, None
+            self.visited[board] = (-v.item(), None)
+            return -v.item(), None
 
         # check all moves from current position
         best_eval, best_move = -float("inf"), None
