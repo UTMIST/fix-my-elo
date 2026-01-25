@@ -2,6 +2,10 @@
 .DS_Store
 .vscode
 
+Team1/kane's model/data/dataset_50k_az.npz
+Team1/kane's model/dataset50kgames.pgn
+*.npz
+*.pgn
 /Team2/__pycache__
 /Team2/pgn_files/LumbrasGigaBase_OTB_2020-2024.pgn
 /Team2/model_files/sl_policy_value_network4.pth
