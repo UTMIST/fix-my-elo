@@ -1,3 +1,11 @@
-This is a copy of the stuff in the og repo (made by me aka colleen :3)
+This is a copy of the stuff in the og repo (made by me aka colleen)
+I didn't want to mess with the files we already have lmao so I'm isolating my work in here
 
-I didn't want to mess with the files we already have lmao so I'm isolating my work in here: everything needed to run the engine including a copy of main is in this folder
+# Main Features 
+- Self-play training loop
+- Monte Carlo Tree Search (MCTS) implementation
+- Neural network model training
+- Game state evaluation and policy generation
+
+# TODO
+- trouble shoot self play since I believe it runs too slowly to make reasonable progress
