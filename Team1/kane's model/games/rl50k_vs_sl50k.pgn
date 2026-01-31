@@ -1,0 +1,10 @@
+[Event "chess_engine_kane"]
+[Site "local"]
+[Date "????.??.??"]
+[Round "?"]
+[White "?"]
+[Black "?"]
+[Result "1/2-1/2"]
+
+1. b4 d5 2. d3 e5 3. Bb2 Bxb4+ 4. Bc3 Bxc3+ 5. Nd2 Bxd2+ 6. Qxd2 Kd7 7. Qc1 Nf6 8. e4 Kd6 9. d4 Nxe4 10. Ne2 Qf6 11. Nf4 exf4 12. f3 Nc3 13. Qd2 Na4 14. Qd1 Re8+ 15. Be2 Nc3 16. Qd3 Bf5 17. Qxc3 Nc6 18. Rb1 Rab8 19. Rb2 Qh4+ 20. Kf1 Bd7 21. Bd3 Re6 22. Qa5 Nxa5 23. Rb1 Nc4 24. Kg1 Qe7 25. Bxc4 dxc4 26. Rb2 Re1+ 27. Kf2 Rf1+ 28. Kxf1 c3 29. Kg1 cxb2 30. Kf1 b1=Q+ 31. Kf2 Qg5 32. Rxb1 b5 33. Ke1 c5 34. Rd1 c4 35. Kd2 b4 36. Ke1 Re8+ 37. Kf1 Re6 38. Kg1 Rg6 39. Rf1 c3 40. Rb1 a5 41. Rd1 Kd5 42. Re1 Rf6 43. Rb1 Rh6 44. Rd1 Kc4 45. Rb1 Qh4 46. Rd1 Qxh2+ 47. Kf1 Bb5 48. Re1 Qg3 49. Kg1 f5 50. Kf1 Qxe1+ 51. Kxe1 Re6+ 52. Kd1 Kxd4 53. a3 g5 54. Kc1 g4 55. Kd1 Rg6 56. fxg4 Rh6 57. gxf5 f3 58. Ke1 f2+ 59. Kd1 Bc4 60. Kc1 Rf6 61. Kd1 b3 62. cxb3 f1=Q+ 63. Kc2 Qxf5+ 64. Kd1 c2+ 65. Kc1 Bxb3 66. a4 Qd7 67. g4 Rf1+ 68. Kb2 Qxg4 69. Ka3 Qg2 70. Kb2 h6 71. Ka3 h5 72. Kb2 h4 73. Ka3 Bc4 74. Kb2 h3 75. Ka3 Ra1+ 76. Kb2 h2 77. Kxa1 h1=Q+ 78. Kb2 Qhh2 79. Kc1 Kc3 1/2-1/2
+

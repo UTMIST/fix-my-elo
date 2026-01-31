@@ -1,0 +1,10 @@
+[Event "chess_engine_kane"]
+[Site "local"]
+[Date "????.??.??"]
+[Round "?"]
+[White "?"]
+[Black "?"]
+[Result "1/2-1/2"]
+
+1. c3 h5 2. h4 g5 3. b3 b6 4. a3 e5 5. c4 Bb7 6. g3 Bd5 7. cxd5 c6 8. Ra2 f6 9. Rb2 Qc8 10. Ra2 Kd8 11. Rb2 a5 12. Ra2 Qc7 13. Rb2 Na6 14. Ra2 Rc8 15. Rb2 Nb8 16. Ra2 c5 17. Rb2 Na6 18. Ra2 Nb8 19. Rb2 Na6 20. Ra2 1/2-1/2
+

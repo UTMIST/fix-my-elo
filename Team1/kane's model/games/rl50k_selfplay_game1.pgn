@@ -1,0 +1,10 @@
+[Event "chess_engine_kane"]
+[Site "local"]
+[Date "????.??.??"]
+[Round "?"]
+[White "?"]
+[Black "?"]
+[Result "1/2-1/2"]
+
+1. d4 d6 2. e4 Bh3 3. b4 e5 4. Be2 c6 5. Bh6 Na6 6. Na3 exd4 7. Bxa6 d5 8. Nxh3 Nxh6 9. Nf4 c5 10. Nb5 cxb4 11. Nxd5 Qc8 12. Nbc7+ Kd8 13. Ne7 Kxc7 14. Nxc8 Nf5 15. Nd6 Re8 16. Rb1 Bxd6 17. f4 Ne3 18. Qc1 Kd7 19. Qxe3 dxe3 20. Bb5+ Ke7 21. Bf1 Kd7 22. Rxb4 Be7 23. Rb6 Bd6 24. Ra6 Bf8 25. Rc6 Kxc6 26. f5 Kd7 27. e5 Kc8 28. f6 gxf6 29. c3 fxe5 30. c4 Bb4+ 31. Kd1 Bf8 32. Kc1 Ba3+ 33. Kc2 e2 34. Kb3 e1=Q 35. Kc2 Qd2+ 36. Kb3 Bc1 37. c5 Ba3 38. Kxa3 Qxa2+ 39. Kxa2 Rhf8 40. Kb2 f6 41. Ka2 Kd7 42. Kb2 Ke7 43. Ka2 Kf7 44. Kb2 Ke7 45. Kc2 Kf7 46. Kd2 Ke7 47. Kc2 Kf7 48. Kd2 Ke7 1/2-1/2
+
