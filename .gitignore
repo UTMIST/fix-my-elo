@@ -9,3 +9,6 @@
 /Team2/model_files/sl_policy_value_network5.pth
 /Team2/model_files/sl_policy_value_network_from_mcts_self_play.pth
 game_examples.pkl
+
+/Team2/*.pth
+/tictactoe
