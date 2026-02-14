@@ -1,0 +1,100 @@
+[Event "Example"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Stockfish"]
+[Black "Model"]
+[Result "1-0"]
+
+1. e4 Nh6 2. d4 Rg8 3. Nc3 Rh8 4. Bxh6 Rg8 5. Bc1 Rh8 6. Bd3 Rg8 7. Nf3 Rh8 8. h3 Rg8 9. a4 Rh8 10. a5 Rg8 11. e5 Rh8 12. Be4 Rg8 13. O-O Rh8 14. Bd2 Rg8 15. Re1 Rh8 16. d5 Rg8 17. Nb5 Rh8 18. d6 Rg8 19. Nxc7+ Qxc7 20. dxc7 Rh8 21. cxb8=R Rg8 22. Rxa8 Rh8 23. Rxc8# 1-0
+
+[Event "Example"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Model"]
+[Black "Stockfish"]
+[Result "0-1"]
+
+1. Nh3 d5 2. Ng5 e5 3. Nxh7 Rxh7 4. Rg1 Nf6 5. Rh1 a5 6. Rg1 Rxh2 7. Rh1 Rxh1 8. Nc3 Rh4 9. Nxd5 Qxd5 10. Rb1 Be6 11. Ra1 Qd8 12. Rb1 Bd6 13. Ra1 Rh8 14. Rb1 Bxa2 15. Ra1 Be6 16. Rxa5 Rxa5 17. g3 e4 18. Bh3 e3 19. Bxe6 Rh1# 0-1
+
+[Event "Example"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Stockfish"]
+[Black "Model"]
+[Result "1-0"]
+
+1. e4 Nh6 2. d4 Rg8 3. Bc4 Rh8 4. Nc3 Rg8 5. Qh5 Rh8 6. Bxh6 Rg8 7. Qxf7# 1-0
+
+[Event "Example"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Model"]
+[Black "Stockfish"]
+[Result "0-1"]
+
+1. Nh3 d5 2. Ng5 e5 3. Nxh7 Rxh7 4. Rg1 Rxh2 5. Rh1 Rxh1 6. Nc3 Rh8 7. Nxd5 Qxd5 8. Rb1 Qd6 9. Ra1 Nc6 10. Rb1 Bd7 11. Ra1 Qg6 12. Rb1 Bd6 13. Ra1 Nge7 14. Rb1 a6 15. Ra1 Bc5 16. Rb1 Bb6 17. Ra1 Bxf2+ 18. Kxf2 Bf5 19. Kf3 Bxc2 20. Ke3 Qg3# 0-1
+
+[Event "Example"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Stockfish"]
+[Black "Model"]
+[Result "1-0"]
+
+1. e4 Nh6 2. d4 Rg8 3. Nf3 Rh8 4. Bc4 Rg8 5. Nc3 Rh8 6. O-O Rg8 7. Qe2 Rh8 8. Rd1 Rg8 9. a4 Rh8 10. h3 Rg8 11. Bg5 Rh8 12. e5 Rg8 13. a5 Rh8 14. Ra3 Rg8 15. d5 Rh8 16. d6 Rg8 17. Nd5 Rh8 18. dxc7 Rg8 19. e6 Rh8 20. exf7+ Kxf7 21. cxd8=Q Rg8 22. Nxe7+ d5 23. Bxd5+ Be6 24. Qxe6# 1-0
+
+[Event "Example"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Model"]
+[Black "Stockfish"]
+[Result "0-1"]
+
+1. Nh3 d5 2. Ng5 e5 3. Nxh7 Rxh7 4. Rg1 Rxh2 5. Rh1 Rxh1 6. Nc3 c6 7. Nxd5 Qxd5 8. Rb1 Qd8 9. Ra1 Be6 10. Rb1 Bxa2 11. Ra1 Be6 12. Rxa7 Rxa7 13. g3 Rxf1+ 14. Kxf1 Ra6 15. Kg2 Nf6 16. Kf3 Qd5+ 17. Ke3 Qe4# 0-1
+
+[Event "Example"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Stockfish"]
+[Black "Model"]
+[Result "1-0"]
+
+1. e4 Nh6 2. d4 Rg8 3. Bc4 Rh8 4. Nc3 Rg8 5. Qh5 Rh8 6. Bxh6 Rg8 7. Qxf7# 1-0
+
+[Event "Example"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Model"]
+[Black "Stockfish"]
+[Result "0-1"]
+
+1. Nh3 d5 2. Ng5 e5 3. Nxh7 Rxh7 4. Rg1 Rxh2 5. Rh1 Rxh1 6. Nc3 Rh7 7. Nxd5 Qxd5 8. Rb1 a5 9. Ra1 Nc6 10. Rb1 Qxa2 11. Ra1 Qxa1 12. g3 Bd7 13. Bh3 Bxh3 14. g4 Ra6 15. g5 Be6 16. Kf1 Rh1+ 17. Kg2 Rxd1 18. Kg3 Rxc1 19. Kh4 Rh1+ 20. Kg3 Rh3+ 21. Kg2 Qh1# 0-1
+
+[Event "Example"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Stockfish"]
+[Black "Model"]
+[Result "1-0"]
+
+1. e4 Nh6 2. d4 Rg8 3. Bc4 Rh8 4. Nf3 Rg8 5. Bg5 Rh8 6. Qe2 Rg8 7. Nc3 Rh8 8. O-O-O Rg8 9. Kb1 Rh8 10. Bxh6 Rg8 11. Bg5 Rh8 12. Ne5 Rg8 13. Bxf7# 1-0
+
+[Event "Example"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Model"]
+[Black "Stockfish"]
+[Result "0-1"]
+
+1. Nh3 d5 2. Ng5 e5 3. Nxh7 Rxh7 4. Rg1 Rxh2 5. Rh1 Rxh1 6. Nc3 d4 7. Nd5 Qxd5 8. Rb1 Rh7 9. Ra1 Be6 10. Rb1 g6 11. Ra1 e4 12. Rb1 Nd7 13. Ra1 f5 14. Rb1 Bg7 15. Ra1 Bf8 16. Rb1 Bb4 17. Ra1 Bf8 18. Rb1 Qc6 19. Ra1 Qd5 20. Rb1 c6 21. Ra1 Rd8 22. Rb1 Qxa2 23. Ra1 Qxa1 24. g3 Qa5 25. Bh3 Rxh3 26. Kf1 Rh1+ 27. Kg2 Rxd1 28. Kh3 f4+ 29. Kh4 Qh5# 0-1
+
