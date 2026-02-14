@@ -50,7 +50,7 @@ class Agent:
         # apply temperature
         counts = np.array(list(mcts.frequency_action[board].values()), dtype=np.float64)
         log_counts = np.log(counts + 1e-10)  # add epsilon to avoid log(0)
-        scaled = log_counts / temperature
+        scaled = log_counts / temperature if temperature > 0 else log_counts * 1e9  # if temperature is 0, make it very large to approximate argmax
         max_scaled = np.max(scaled)  # numerical stability
         exp_scaled = np.exp(scaled - max_scaled)
         probs = exp_scaled / exp_scaled.sum()
