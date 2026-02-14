@@ -14,6 +14,7 @@ from multiprocessing import get_context
 from monte_carlo_tree_search import Monte_Carlo_Tree_Search
 from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
 from data_processing import fen_to_board_tensor, uci_to_tensor, move_tensor_to_label
+from stockfish import Stockfish
 
 # allow each worker to only use 1 thread to prevent saturation
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -58,6 +59,108 @@ class Agent:
         return self.rng.choice(list(mcts.frequency_action[board].keys()), p=probs)  # select move based on visit counts 
      
 
+    def stockfish_self_play(self, num_simulations, temperature):
+        board = chess.Board()
+        examples = [] # stores state, move, and winner for training
+        device = next(self.policy_value_network.parameters()).device
+        self.policy_value_network.eval()
+        stockfish = Stockfish(path=r"C:\Users\masar\Downloads\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe")
+        stockfish.set_depth(10)
+        stockfish_turn = 1
+
+        moves = []
+        while True: # infinite loop until terminal state
+            
+            board_fen = board.fen()
+            board_tensor = fen_to_board_tensor(board_fen).unsqueeze(0).to(device)
+
+            if stockfish_turn == 1:
+                stockfish.set_fen_position(board.fen())
+                move = stockfish.get_best_move()
+                board.push_uci(move)
+            else:
+                #temperature set to 1.0 (high expoloration)
+                move = self.select_move(game_state=board, num_simulations=num_simulations, temperature = temperature).item()
+                board.push_uci(move)
+
+            examples.append([board_tensor.squeeze(0), move_tensor_to_label(uci_to_tensor(move)), None])
+            stockfish_turn *= -1
+            moves.append(move)
+
+            if board.is_game_over(): 
+                cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
+                reward = cases[board.result()]
+                
+                for example in examples: # assign rewards (winners) to examples
+                    example[2] = reward 
+                
+                return examples
+
+    def stockfish_only_training(self, iterations, num_games: int, train_to_test_ratio: float, num_simulations: int):
+        """
+
+        """
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        policy_criterion = nn.CrossEntropyLoss()
+        value_criterion = nn.MSELoss()
+        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=1e-5)
+
+        start_time = time.time()
+
+        for epoch in iterations:
+
+            all_examples = []
+
+            print(f"[Stockfish-Only] epoch {epoch}: generating {num_games} games vs Stockfish")
+
+            # Generate games in parallel
+            model_state_dict = {k: v.cpu() for k, v in self.policy_value_network.state_dict().items()}
+            worker_args = [
+                (model_state_dict, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, num_simulations)
+                for _ in range(num_games)
+            ]
+
+            ctx = get_context("spawn")
+            batch_size = 5
+            output_path = "stockfish_only_examples.pkl"
+            with open(output_path, "ab") as f, ctx.Pool(processes=batch_size) as pool:
+                for i, game_examples in enumerate(pool.imap_unordered(stockfish_self_play_worker, worker_args), start=1):
+                    all_examples.extend(game_examples)
+                    pickle.dump(game_examples, f)
+                    if i % batch_size == 0 or i == num_games:
+                        print(f"  generated {i}/{num_games} games — elapsed: {time.time() - start_time:.2f}s")
+
+            # Build datasets
+            train_dataloader, test_dataloader = examples_to_dataset(all_examples, train_to_test_ratio)
+
+            # Train
+            print("[Stockfish-Only] training on collected examples")
+            self.policy_value_network.train()
+            for batch_idx, (data, target) in enumerate(train_dataloader):
+                data = data.to(device)
+                batch_move_target = target[:, 0].to(device)
+                batch_val_target = target[:, 1].float().unsqueeze(1).to(device)
+
+                pred_policy, pred_val = self.policy_value_network(data)
+                policy_loss = policy_criterion(pred_policy, batch_move_target)
+                value_loss = value_criterion(pred_val, batch_val_target)
+                loss = policy_loss + value_loss
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                if batch_idx % 100 == 0:
+                    print(f"  [train] batch {batch_idx+1}/{len(train_dataloader)} loss: {loss.item():.6f}")
+
+            # Checkpoint
+            torch.save({
+                "model": self.policy_value_network.state_dict(),
+                "optimizer": optimizer.state_dict(),
+            }, "checkpoint_stockfish_only.pth")
+            print("[Stockfish-Only] checkpoint saved: checkpoint_stockfish_only.pth")
+
     def mcts_self_play(self, num_simulations, resign_moves, resign_threshold):
         '''
         executes an iteration of MCTS for the given game state
@@ -75,13 +178,10 @@ class Agent:
             board = game_state.fen()
             board_tensor = fen_to_board_tensor(board).unsqueeze(0).to(device)
             
-            # run MCTS simulations to find policy for current state
             mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set())
             for _ in range(num_simulations): 
                 mcts.search(game_state.copy(), True)
-                
             
-            # find optimal move based on visit frequencies (policy)
             freqs = np.array(list(mcts.frequency_action[board].values()), dtype=np.float32)
             probs = freqs / freqs.sum()
             move = self.rng.choice(list(mcts.frequency_action[board].keys()), p=probs)
@@ -89,7 +189,7 @@ class Agent:
             # store training example
             examples.append([board_tensor.squeeze(0), move_tensor_to_label(uci_to_tensor(move)), None]) # winner to be assigned later
             
-            game_state.push_uci(move) # perform selected move
+            game_state.push_uci(move)
             
 
             # end game ("resign") if value is higher than resign_threshold for resign_moves moves, speeds up training + ensures clean training data for less-trained endgame positions with huge material advantage and not many pieces where moves are pretty random
@@ -130,7 +230,6 @@ class Agent:
         performs self-play training to improve the policy network
         '''
         
-        # define policy network, optimizer, and loss functions
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         old_nn = SLPolicyValueNetwork().to(device)
         old_nn.load_state_dict(self.policy_value_network.state_dict())
@@ -139,8 +238,6 @@ class Agent:
         optimizer = optim.Adam(self.policy_value_network.parameters(), lr=0.1e-4)
         start_time = time.time()
         
-
-        # train for specified number of iterations
         examples = []
         
         for epoch in range(num_training_iterations):
@@ -246,7 +343,6 @@ class Agent:
         print(f'new nn outperformed old nn, {pit_result} games won out of {num_testing_games}')
         print('new nn replaced old nn')
 
-            
 
 
 # agent training helper functions
@@ -266,9 +362,11 @@ def self_play_worker(args):
 
     # force CPU
     device = torch.device("cpu")
-    # 1 thread per worker
-    torch.set_num_threads(1)
-    torch.set_num_interop_threads(1)
+    # limit threads in worker (safe to call if runtime allows)
+    try:
+        torch.set_num_threads(1)
+    except RuntimeError:
+        pass
     # load model locally
     policy_value_network = SLPolicyValueNetwork().to(device)
     policy_value_network.load_state_dict(model_state_dict)
@@ -284,17 +382,50 @@ def self_play_worker(args):
         )
 
 
+def stockfish_self_play_worker(args):
+    """Worker for multiprocessing Stockfish-vs-model self-play.
+
+    Expected args: (model_state_dict, c_puct, dirichlet_alpha, dirichlet_epsilon, num_simulations)
+    Returns the list of training examples produced by Agent.stockfish_self_play.
+    """
+    (
+        model_state_dict,
+        c_puct,
+        dirichlet_alpha,
+        dirichlet_epsilon,
+        num_simulations,
+        temperature,
+    ) = args
+
+    # force CPU for worker
+    device = torch.device("cpu")
+    # limit threads in worker (ignore if not allowed at this point)
+    try:
+        torch.set_num_threads(1)
+    except RuntimeError:
+        pass
+
+    policy_value_network = SLPolicyValueNetwork().to(device)
+    policy_value_network.load_state_dict(model_state_dict)
+    policy_value_network.eval()
+
+    agent = Agent(policy_value_network, c_puct, dirichlet_alpha, dirichlet_epsilon)
+
+    with torch.no_grad():
+        return agent.stockfish_self_play(num_simulations, temperature)
+
+
 def pit(policy_value_network1, policy_value_network2, num_games, num_simulations, c_puct, dirichlet_alpha, dirichlet_epsilon, temperature):
     '''
     pit two chess agents w/ two different neural net bases against eachother by playing games,
-    returns how many games nn1 wins against nn2
+    returns the difference between agent1 wins and agent2 wins
     '''
 
     os.makedirs("pit_games", exist_ok=True)
 
     agent1 = Agent(policy_value_network1, c_puct, dirichlet_alpha, dirichlet_epsilon)
     agent2 = Agent(policy_value_network2, c_puct, dirichlet_alpha, dirichlet_epsilon)
-    wins = 0
+    score = 0
 
     for i in range(num_games):  # play num_games games
         game_state = chess.Board()
@@ -324,12 +455,12 @@ def pit(policy_value_network1, policy_value_network2, num_games, num_simulations
                 winner = cases[game_state.result()]
                 game.headers["Result"] = game_state.result()
 
-                print(f'game over after {move_count} moves, result: {game_state.result()}, outcome: {game_state.outcome().termination.name}, board: {game_state.fen()}')
+                print(f'game {i} over after {move_count} moves, result: {game_state.result()}, outcome: {game_state.outcome().termination.name}, board: {game_state.fen()}')
 
                 if agent1 == white:
-                    wins += max(winner, 0)
+                    score += winner
                 else:
-                    wins += max(-winner, 0)
+                    score += -winner
 
                 break
 
@@ -347,16 +478,16 @@ def pit(policy_value_network1, policy_value_network2, num_games, num_simulations
                 print(f'game over after {move_count} moves, result: {game_state.result()}, outcome: {game_state.outcome().termination.name}, board: {game_state.fen()}')
 
                 if agent1 == white:
-                    wins += max(winner, 0)
+                    score += winner
                 else:
-                    wins += max(-winner, 0)
+                    score += -winner
 
                 break
 
         with open(f"pit_games/game_{i+1:03d}.pgn", "w") as f:
             f.write(str(game))
 
-    return wins
+    return score
 
 
     
