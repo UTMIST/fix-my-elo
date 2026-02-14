@@ -86,7 +86,7 @@ def agent_vs_stockfish(num_games, num_simulations, path_to_output):
                 moves.append(move)
                 board.push_uci(move)
             else:
-                move = agent.select_move(game_state=board, num_simulations=num_simulations)
+                move = agent.select_move(game_state=board, num_simulations=num_simulations,temperature=1.0)
                 moves.append(move)
                 board.push_uci(move)
 
@@ -105,5 +105,5 @@ def agent_vs_stockfish(num_games, num_simulations, path_to_output):
     print(f"took {cpu_elapsed:.4f} seconds")
 
 if __name__ == "__main__":
-    agent_vs_stockfish(1000, 2, "pgn_files/stockfish_vs_model.pgn")
+    agent_vs_stockfish(10, 2, "pgn_files/stockfish_vs_model.pgn")
     
