@@ -58,6 +58,51 @@ class Agent:
         
         return self.rng.choice(list(mcts.frequency_action[board].keys()), p=probs)  # select move based on visit counts 
      
+    def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0):
+        stockfish = Stockfish(path=r"C:\Users\masar\Downloads\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe")
+        stockfish.set_depth(10)
+
+        cpu_start = time.process_time()
+        for i in range(num_games):
+            board = chess.Board()
+            moves = []
+            game = chess.pgn.Game()
+            game.headers["Event"] = f"Epoch {epoch} Game {i}"
+            node = None
+            stockfish_turn = (-1)**i
+
+            if stockfish_turn == 1:
+                game.headers["White"] = "Stockfish"
+                game.headers["Black"] = "Model"
+            else:
+                game.headers["White"] = "Model"
+                game.headers["Black"] = "Stockfish"
+
+            while not board.is_game_over():
+                if stockfish_turn == 1:
+                    stockfish.set_fen_position(board.fen())
+                    move = stockfish.get_best_move()
+                    moves.append(move)
+                    board.push_uci(move)
+                else:
+                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=1.0)
+                    moves.append(move)
+                    board.push_uci(move)
+
+                stockfish_turn *= -1
+
+                if node is None:
+                    node = game.add_variation(chess.Move.from_uci(move))
+                else:
+                    node = node.add_variation(chess.Move.from_uci(move))
+            game.headers["Result"] = board.result()
+            with open(path_to_output, "a") as file:
+                print(game, file=file, end="\n\n")
+        
+        cpu_end = time.process_time()
+        cpu_elapsed = cpu_end - cpu_start
+        print(f"took {cpu_elapsed:.4f} seconds")
+
 
     def stockfish_self_play(self, num_simulations, temperature):
         board = chess.Board()
@@ -96,7 +141,7 @@ class Agent:
                 
                 return examples
 
-    def stockfish_only_training(self, iterations, num_games: int, train_to_test_ratio: float, num_simulations: int):
+    def stockfish_only_training(self, iterations, num_games: int, train_to_test_ratio: float, num_simulations: int, temperature: int, workers: int):
         """
 
         """
@@ -104,31 +149,28 @@ class Agent:
 
         policy_criterion = nn.CrossEntropyLoss()
         value_criterion = nn.MSELoss()
-        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=1e-5)
+        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=1e-2)
 
         start_time = time.time()
 
-        for epoch in iterations:
-
+        for epoch in range(iterations):
             all_examples = []
-
             print(f"[Stockfish-Only] epoch {epoch}: generating {num_games} games vs Stockfish")
 
             # Generate games in parallel
             model_state_dict = {k: v.cpu() for k, v in self.policy_value_network.state_dict().items()}
             worker_args = [
-                (model_state_dict, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, num_simulations)
+                (model_state_dict, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, num_simulations, temperature)
                 for _ in range(num_games)
             ]
 
             ctx = get_context("spawn")
-            batch_size = 5
             output_path = "stockfish_only_examples.pkl"
-            with open(output_path, "ab") as f, ctx.Pool(processes=batch_size) as pool:
+            with open(output_path, "ab") as f, ctx.Pool(processes=workers) as pool:
                 for i, game_examples in enumerate(pool.imap_unordered(stockfish_self_play_worker, worker_args), start=1):
                     all_examples.extend(game_examples)
                     pickle.dump(game_examples, f)
-                    if i % batch_size == 0 or i == num_games:
+                    if i % workers == 0 or i == num_games:
                         print(f"  generated {i}/{num_games} games — elapsed: {time.time() - start_time:.2f}s")
 
             # Build datasets
@@ -154,12 +196,35 @@ class Agent:
                 if batch_idx % 100 == 0:
                     print(f"  [train] batch {batch_idx+1}/{len(train_dataloader)} loss: {loss.item():.6f}")
 
+            self.policy_value_network.eval()
+            test_loss = 0
+
+            with torch.no_grad():
+                for batch_idx, (data, target) in enumerate(test_dataloader):
+                    data = data.to(device)
+                    batch_move_target = target[:, 0].to(device)
+                    batch_val_target = target[:, 1].float().unsqueeze(1).to(device)
+
+                    pred_policy, pred_val = self.policy_value_network(data)
+                    policy_loss = policy_criterion(pred_policy, batch_move_target)  # calculate loss for policy
+                    value_loss = value_criterion(pred_val, batch_val_target) # calculate loss for value
+                    loss = policy_loss + value_loss
+                    test_loss += loss
+
+            print('epoch: {}, test loss: {:.6f}'.format(
+                epoch + 1,
+                test_loss / len(test_dataloader),
+                ))
+
             # Checkpoint
             torch.save({
                 "model": self.policy_value_network.state_dict(),
                 "optimizer": optimizer.state_dict(),
             }, "checkpoint_stockfish_only.pth")
             print("[Stockfish-Only] checkpoint saved: checkpoint_stockfish_only.pth")
+
+            #Generate examplar game every epoch
+            self.agent_vs_stockfish(2, 10, "pgn_files/examplar_games.pgn", epoch)
 
     def mcts_self_play(self, num_simulations, resign_moves, resign_threshold):
         '''
@@ -510,7 +575,7 @@ def examples_to_dataset(examples, train_to_test_ratio):
     X_test = torch.stack([board for board, move, winner in test_data])
     t_test = torch.tensor([(move, winner) for board, move, winner in test_data])
 
-    batch_size = 256 # create DataLoaders
+    batch_size = 512 # create DataLoaders
     train_dataset = TensorDataset(X_train, t_train)
     test_dataset = TensorDataset(X_test, t_test)
 
