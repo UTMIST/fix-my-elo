@@ -4,6 +4,7 @@ import random
 import os
 import numpy as np
 import pickle
+import csv
 import time
 import torch
 import torch.nn as nn
@@ -95,7 +96,17 @@ class Agent:
         probs = probs / probs.sum()
 
         return self.rng.choice(moves, p=probs)
-     
+    
+    def evaluate_value(self, fen: str) -> float:
+        """Return the scalar value-network evaluation for the given FEN (value is from
+        the perspective of the side to move; range roughly -1..+1)."""
+        device = next(self.policy_value_network.parameters()).device
+        self.policy_value_network.eval()
+        with torch.no_grad():
+            board_tensor = fen_to_board_tensor(fen).unsqueeze(0).to(device)
+            _, v = self.policy_value_network(board_tensor)
+            return float(v.item())
+
     def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0):
         stockfish = Stockfish(path=r"C:\Users\masar\Downloads\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe")
         stockfish.set_depth(10)
@@ -183,6 +194,7 @@ class Agent:
                         example[2] = reward * multiplier
 
                 return examples
+                
 
     def stockfish_only_training(self, iterations, num_games: int, train_to_test_ratio: float, num_simulations: int, temperature: int, workers: int):
         """
@@ -191,9 +203,15 @@ class Agent:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         policy_criterion = nn.CrossEntropyLoss()
-        value_criterion = nn.MSELoss()
-        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=1e-1)
-        scheduler = ReduceLROnPlateau(optimizer,'min',0.1,10)
+        # prefer SmoothL1 (Huber) for value head — more robust than MSE
+        value_criterion = nn.SmoothL1Loss()
+        # value_criterion = nn.MSELoss()
+        # much smaller LR to avoid divergence
+        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=1e-3, weight_decay=0.001)
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
+
+        # backup weights in case training collapses
+        backup_state = {k: v.clone().cpu() for k, v in self.policy_value_network.state_dict().items()}
 
         start_time = time.time()
 
@@ -223,6 +241,11 @@ class Agent:
             # Train
             print("[Stockfish-Only] training on collected examples")
             self.policy_value_network.train()
+
+            # accumulate average training loss for this epoch
+            train_loss_sum = 0.0
+            train_batches = 0
+
             for batch_idx, (data, target) in enumerate(train_dataloader):
                 data = data.to(device)
                 batch_move_target = target[:, 0].to(device)
@@ -235,10 +258,20 @@ class Agent:
 
                 optimizer.zero_grad()
                 loss.backward()
+
+                # gradient clipping to prevent explosion
+                torch.nn.utils.clip_grad_norm_(self.policy_value_network.parameters(), max_norm=1.0)
+
                 optimizer.step()
+
+                # accumulate for epoch-level logging
+                train_loss_sum += loss.item()
+                train_batches += 1
 
                 if batch_idx % 100 == 0:
                     print(f"  [train] batch {batch_idx+1}/{len(train_dataloader)} loss: {loss.item():.6f}")
+
+            avg_train_loss = train_loss_sum / train_batches if train_batches > 0 else 0.0
 
             self.policy_value_network.eval()
             test_loss = 0
@@ -258,11 +291,31 @@ class Agent:
             valid_loss = test_loss / len(test_dataloader)
             scheduler.step(valid_loss)
 
+            # ensure scalar floats for logging
+            valid_loss_value = valid_loss.item() if hasattr(valid_loss, "item") else float(valid_loss)
+            avg_train_loss_value = float(avg_train_loss)
+
             print('epoch: {}, test loss: {:.6f}, lr: {}'.format(
                 epoch + 1,
-                valid_loss,
+                valid_loss_value,
                 optimizer.param_groups[0]['lr']
                 ))
+
+            # --- CSV logging (append) ---
+            csv_path = "stockfish_only_training_log.csv"
+            write_header = not os.path.exists(csv_path)
+            try:
+                with open(csv_path, "a", newline="") as csvfile:
+                    writer = csv.writer(csvfile)
+                    if write_header:
+                        writer.writerow(["epoch", "train_loss", "valid_loss", "lr", "timestamp"])
+                    writer.writerow([epoch + 1, f"{avg_train_loss_value:.6f}", f"{valid_loss_value:.6f}", optimizer.param_groups[0]['lr'], int(time.time())])
+            except Exception as e:
+                print(f"[Stockfish-Only] warning: failed to write CSV log: {e}")
+
+            
+            # test = chess.Board()
+            # print(f"eval of initial position: {self.evaluate_value(test.fen())}")
 
             # Checkpoint
             torch.save({
@@ -354,7 +407,8 @@ class Agent:
         old_nn = SLPolicyValueNetwork().to(device)
         old_nn.load_state_dict(self.policy_value_network.state_dict())
         policy_criterion = nn.CrossEntropyLoss() # softmax regression loss function
-        value_criterion = nn.MSELoss() # use to use logistic loss but expects labels to be 0 or 1, not a range betwen -1 and 1
+        # use SmoothL1 (Huber) for value head - more robust than plain MSE
+        value_criterion = nn.SmoothL1Loss()
         optimizer = optim.Adam(self.policy_value_network.parameters(), lr=0.1e-4)
         start_time = time.time()
         
