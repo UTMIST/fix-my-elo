@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from multiprocessing import get_context
 from monte_carlo_tree_search import Monte_Carlo_Tree_Search
 from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
@@ -41,6 +42,7 @@ class Agent:
         '''
         Selects the best move based on the policy network's predictions.
         '''
+        device = next(self.policy_value_network.parameters()).device
         self.policy_value_network.eval()
         board = game_state.fen()
         mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set()) # generate new mcts object to save memory
@@ -48,15 +50,51 @@ class Agent:
         for _ in range(num_simulations): 
             mcts.search(game_state.copy(), True) # perform mcts search
 
-        # apply temperature
+        # apply temperature with numerical stability and NaN-safety
+        moves = list(mcts.frequency_action[board].keys())
         counts = np.array(list(mcts.frequency_action[board].values()), dtype=np.float64)
-        log_counts = np.log(counts + 1e-10)  # add epsilon to avoid log(0)
-        scaled = log_counts / temperature if temperature > 0 else log_counts * 1e9  # if temperature is 0, make it very large to approximate argmax
-        max_scaled = np.max(scaled)  # numerical stability
-        exp_scaled = np.exp(scaled - max_scaled)
-        probs = exp_scaled / exp_scaled.sum()
-        
-        return self.rng.choice(list(mcts.frequency_action[board].keys()), p=probs)  # select move based on visit counts 
+
+        combined = zip(moves, counts)
+        combined = sorted(combined, key=lambda x: x[1].item(), reverse=True)
+
+        # # debuggning
+        # print(combined)
+        # print(self.policy_value_network(fen_to_board_tensor(game_state.fen()).unsqueeze(0).to(device))[1].item())
+
+        if counts.size == 0:
+            raise RuntimeError(f"MCTS returned no visit counts for board: {board}")
+
+        # deterministic selection when temperature == 0
+        if temperature == 0:
+            idx = int(np.argmax(counts))
+            return moves[idx]
+
+        # compute a numerically-stable log-softmax over counts
+        # add tiny epsilon to avoid log(0)
+        eps = 1e-16
+        log_counts = np.log(counts + eps)
+        scaled = log_counts / float(temperature)
+
+        # fallback to normalized counts if scaling produced non-finite values
+        if not np.all(np.isfinite(scaled)):
+            probs = counts / counts.sum()
+        else:
+            # log-sum-exp trick
+            m = np.max(scaled)
+            exp_scaled = np.exp(scaled - m)
+            s = exp_scaled.sum()
+            if s <= 0 or not np.isfinite(s):
+                probs = counts / counts.sum()
+            else:
+                probs = exp_scaled / s
+
+        # final sanity: ensure probabilities are finite and sum to 1
+        if not np.all(np.isfinite(probs)) or probs.sum() <= 0:
+            probs = counts / counts.sum()
+
+        probs = probs / probs.sum()
+
+        return self.rng.choice(moves, p=probs)
      
     def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0):
         stockfish = Stockfish(path=r"C:\Users\masar\Downloads\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe")
@@ -85,7 +123,7 @@ class Agent:
                     moves.append(move)
                     board.push_uci(move)
                 else:
-                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=1.0)
+                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.1)
                     moves.append(move)
                     board.push_uci(move)
 
@@ -135,10 +173,15 @@ class Agent:
             if board.is_game_over(): 
                 cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
                 reward = cases[board.result()]
-                
-                for example in examples: # assign rewards (winners) to examples
-                    example[2] = reward 
-                
+                # assign rewards relative to the player to move at each example
+                if reward == 0:
+                    for example in examples:
+                        example[2] = 0
+                else:
+                    for i, example in enumerate(examples):
+                        multiplier = 1 if (i % 2) == 0 else -1
+                        example[2] = reward * multiplier
+
                 return examples
 
     def stockfish_only_training(self, iterations, num_games: int, train_to_test_ratio: float, num_simulations: int, temperature: int, workers: int):
@@ -149,7 +192,8 @@ class Agent:
 
         policy_criterion = nn.CrossEntropyLoss()
         value_criterion = nn.MSELoss()
-        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=1e-2)
+        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=1e-1)
+        scheduler = ReduceLROnPlateau(optimizer,'min',0.1,10)
 
         start_time = time.time()
 
@@ -211,9 +255,13 @@ class Agent:
                     loss = policy_loss + value_loss
                     test_loss += loss
 
-            print('epoch: {}, test loss: {:.6f}'.format(
+            valid_loss = test_loss / len(test_dataloader)
+            scheduler.step(valid_loss)
+
+            print('epoch: {}, test loss: {:.6f}, lr: {}'.format(
                 epoch + 1,
-                test_loss / len(test_dataloader),
+                valid_loss,
+                optimizer.param_groups[0]['lr']
                 ))
 
             # Checkpoint
@@ -273,9 +321,11 @@ class Agent:
 
             if consecutive_high_value_white >= resign_moves or consecutive_high_value_black >= resign_moves:
                 reward = 1 if consecutive_high_value_white >= resign_moves else -1
-                for example in examples: # assign rewards (winners) to exmaples
-                    example[2] = reward
-                    
+                # assign rewards relative to the player to move at each example
+                for i, example in enumerate(examples):
+                    multiplier = 1 if (i % 2) == 0 else -1
+                    example[2] = reward * multiplier
+
                 return examples
         
         
@@ -283,10 +333,15 @@ class Agent:
             if game_state.is_game_over(): 
                 cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
                 reward = cases[game_state.result()]
-                
-                for example in examples: # assign rewards (winners) to examples
-                    example[2] = reward 
-                    
+                # assign rewards relative to the player to move at each example
+                if reward == 0:
+                    for example in examples:
+                        example[2] = 0
+                else:
+                    for i, example in enumerate(examples):
+                        multiplier = 1 if (i % 2) == 0 else -1
+                        example[2] = reward * multiplier
+
                 return examples
             
     
