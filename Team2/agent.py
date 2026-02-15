@@ -4,7 +4,6 @@ import random
 import os
 import numpy as np
 import pickle
-import csv
 import time
 import torch
 import torch.nn as nn
@@ -161,8 +160,8 @@ class Agent:
         stockfish = Stockfish(path=r"C:\Users\masar\Downloads\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe")
         stockfish.set_depth(10)
         stockfish_turn = 1
-
         moves = []
+
         while True: # infinite loop until terminal state
             
             board_fen = board.fen()
@@ -203,17 +202,19 @@ class Agent:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         policy_criterion = nn.CrossEntropyLoss()
-        # prefer SmoothL1 (Huber) for value head — more robust than MSE
+        # prefer SmoothL1 (Huber) for value head
         value_criterion = nn.SmoothL1Loss()
         # value_criterion = nn.MSELoss()
-        # much smaller LR to avoid divergence
-        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=1e-3, weight_decay=0.001)
+        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=1e-5)
         scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
 
         # backup weights in case training collapses
         backup_state = {k: v.clone().cpu() for k, v in self.policy_value_network.state_dict().items()}
 
         start_time = time.time()
+        # keep a rolling buffer of examples from recent epochs (last N epochs)
+        recent_epoch_examples = []
+        max_epoch_buffer = 5
 
         for epoch in range(iterations):
             all_examples = []
@@ -235,24 +236,40 @@ class Agent:
                     if i % workers == 0 or i == num_games:
                         print(f"  generated {i}/{num_games} games — elapsed: {time.time() - start_time:.2f}s")
 
-            # Build datasets
-            train_dataloader, test_dataloader = examples_to_dataset(all_examples, train_to_test_ratio)
+            
+
+            # add current epoch's examples to recent buffer and concatenate last N epochs
+            recent_epoch_examples.append(all_examples)
+            if len(recent_epoch_examples) > max_epoch_buffer:
+                recent_epoch_examples.pop(0)
+
+            # combine examples from the last up to `max_epoch_buffer` epochs
+            combined_examples = []
+            for ex_list in recent_epoch_examples:
+                combined_examples.extend(ex_list)
+
+            # Build datasets (only drop malformed entries; keep -1 labels so value trains on all examples)
+            combined_examples = [ex for ex in combined_examples if len(ex) >= 3]
+            train_dataloader, test_dataloader = examples_to_dataset(combined_examples, train_to_test_ratio)
 
             # Train
             print("[Stockfish-Only] training on collected examples")
             self.policy_value_network.train()
-
-            # accumulate average training loss for this epoch
-            train_loss_sum = 0.0
-            train_batches = 0
-
             for batch_idx, (data, target) in enumerate(train_dataloader):
                 data = data.to(device)
                 batch_move_target = target[:, 0].to(device)
                 batch_val_target = target[:, 1].float().unsqueeze(1).to(device)
 
                 pred_policy, pred_val = self.policy_value_network(data)
-                policy_loss = policy_criterion(pred_policy, batch_move_target)
+
+                # Policy: only train on datapoints where winner label == 1
+                mask = (batch_val_target.view(-1) == 1)
+                if mask.sum() > 0:
+                    policy_loss = policy_criterion(pred_policy[mask], batch_move_target[mask])
+                else:
+                    policy_loss = torch.tensor(0.0, device=device)
+
+                # Value: train on all datapoints in the batch
                 value_loss = value_criterion(pred_val, batch_val_target)
                 loss = policy_loss + value_loss
 
@@ -264,14 +281,8 @@ class Agent:
 
                 optimizer.step()
 
-                # accumulate for epoch-level logging
-                train_loss_sum += loss.item()
-                train_batches += 1
-
                 if batch_idx % 100 == 0:
                     print(f"  [train] batch {batch_idx+1}/{len(train_dataloader)} loss: {loss.item():.6f}")
-
-            avg_train_loss = train_loss_sum / train_batches if train_batches > 0 else 0.0
 
             self.policy_value_network.eval()
             test_loss = 0
@@ -291,28 +302,11 @@ class Agent:
             valid_loss = test_loss / len(test_dataloader)
             scheduler.step(valid_loss)
 
-            # ensure scalar floats for logging
-            valid_loss_value = valid_loss.item() if hasattr(valid_loss, "item") else float(valid_loss)
-            avg_train_loss_value = float(avg_train_loss)
-
             print('epoch: {}, test loss: {:.6f}, lr: {}'.format(
                 epoch + 1,
-                valid_loss_value,
+                valid_loss,
                 optimizer.param_groups[0]['lr']
                 ))
-
-            # --- CSV logging (append) ---
-            csv_path = "stockfish_only_training_log.csv"
-            write_header = not os.path.exists(csv_path)
-            try:
-                with open(csv_path, "a", newline="") as csvfile:
-                    writer = csv.writer(csvfile)
-                    if write_header:
-                        writer.writerow(["epoch", "train_loss", "valid_loss", "lr", "timestamp"])
-                    writer.writerow([epoch + 1, f"{avg_train_loss_value:.6f}", f"{valid_loss_value:.6f}", optimizer.param_groups[0]['lr'], int(time.time())])
-            except Exception as e:
-                print(f"[Stockfish-Only] warning: failed to write CSV log: {e}")
-
             
             # test = chess.Board()
             # print(f"eval of initial position: {self.evaluate_value(test.fen())}")

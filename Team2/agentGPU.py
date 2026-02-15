@@ -10,18 +10,18 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model1 = SLPolicyValueNetwork().to(device)
-    # model1.load_state_dict(torch.load("checkpoint_stockfish_only.pth", map_location=torch.device("cuda"))["model"])
+    model1.load_state_dict(torch.load("checkpoint_stockfish_only.pth", map_location=torch.device("cuda"))["model"])
 
     # only train the first model
     agent = Agent(policy_value_network=model1, c_puct=1.0, dirichlet_alpha=0.3, dirichlet_epsilon=0.25)
     # agent.training_self_play(num_training_iterations=1, num_games=4, train_to_test_ratio=0.8, num_simulations=10, resign_moves=20, resign_threshold=0.95, num_testing_games=20, improvement_threshold=30, temperature=0.1)
 
     # progress too slow? not enough pitting games?
-    # examples = agent.stockfish_self_play(100, 1.0)
-    # print(examples[:4])
+    # examples = agent.stockfish_self_play(2, 1.0)
+    # print(examples[0])
 
     # train fresh network with stockfish
-    agent.stockfish_only_training(iterations=20, num_games=200, train_to_test_ratio=0.8, num_simulations=2, temperature=0.5, workers=10)
+    agent.stockfish_only_training(iterations=100, num_games=200, train_to_test_ratio=0.8, num_simulations=2, temperature=0.5, workers=14)
 
     # # benchmark
     # import time
