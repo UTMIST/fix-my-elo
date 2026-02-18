@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CyclicLR
 from multiprocessing import get_context
 from monte_carlo_tree_search import Monte_Carlo_Tree_Search
 from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
@@ -54,8 +54,8 @@ class Agent:
         moves = list(mcts.frequency_action[board].keys())
         counts = np.array(list(mcts.frequency_action[board].values()), dtype=np.float64)
 
-        combined = zip(moves, counts)
-        combined = sorted(combined, key=lambda x: x[1].item(), reverse=True)
+        # combined = zip(moves, counts)
+        # combined = sorted(combined, key=lambda x: x[1].item(), reverse=True)
 
         # # debuggning
         # print(combined)
@@ -153,8 +153,11 @@ class Agent:
 
 
     def stockfish_self_play(self, num_simulations, temperature):
+        """
+        Play 1 game where stockfish is white, and another with stockfish as black.
+        """
         board = chess.Board()
-        examples = [] # stores state, move, and winner for training
+        all = [] # stores state, move, and winner for training
         device = next(self.policy_value_network.parameters()).device
         self.policy_value_network.eval()
         stockfish = Stockfish(path=r"C:\Users\masar\Downloads\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe")
@@ -162,38 +165,45 @@ class Agent:
         stockfish_turn = 1
         moves = []
 
-        while True: # infinite loop until terminal state
+        for i in range(2):
+            board = chess.Board()  # reset board for each game
+            examples = []
+
+            if i == 1:
+                stockfish_turn = -1
             
-            board_fen = board.fen()
-            board_tensor = fen_to_board_tensor(board_fen).unsqueeze(0).to(device)
+            while True:
+                if board.is_game_over(): 
+                    cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
+                    reward = cases[board.result()]
+                    # assign rewards relative to the player to move at each example
+                    if reward == 0:
+                        for example in examples:
+                            example[2] = 0
+                    else:
+                        for i, example in enumerate(examples):
+                            multiplier = 1 if (i % 2) == 0 else -1
+                            example[2] = reward * multiplier
 
-            if stockfish_turn == 1:
-                stockfish.set_fen_position(board.fen())
-                move = stockfish.get_best_move()
-                board.push_uci(move)
-            else:
-                #temperature set to 1.0 (high expoloration)
-                move = self.select_move(game_state=board, num_simulations=num_simulations, temperature = temperature).item()
-                board.push_uci(move)
-
-            examples.append([board_tensor.squeeze(0), move_tensor_to_label(uci_to_tensor(move)), None])
-            stockfish_turn *= -1
-            moves.append(move)
-
-            if board.is_game_over(): 
-                cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
-                reward = cases[board.result()]
-                # assign rewards relative to the player to move at each example
-                if reward == 0:
-                    for example in examples:
-                        example[2] = 0
-                else:
-                    for i, example in enumerate(examples):
-                        multiplier = 1 if (i % 2) == 0 else -1
-                        example[2] = reward * multiplier
-
-                return examples
+                    all.extend(examples)
+                    break
                 
+                board_fen = board.fen()
+                board_tensor = fen_to_board_tensor(board_fen).unsqueeze(0).to(device)
+
+                if stockfish_turn == 1:
+                    stockfish.set_fen_position(board.fen())
+                    move = stockfish.get_best_move()
+                    board.push_uci(move)
+                else:
+                    move = self.select_move(game_state=board, num_simulations=num_simulations, temperature = temperature).item()
+                    board.push_uci(move)
+
+                examples.append([board_tensor.squeeze(0), move_tensor_to_label(uci_to_tensor(move)), None])
+                stockfish_turn *= -1
+                moves.append(move)
+        
+        return all
 
     def stockfish_only_training(self, iterations, num_games: int, train_to_test_ratio: float, num_simulations: int, temperature: int, workers: int):
         """
@@ -205,8 +215,11 @@ class Agent:
         # prefer SmoothL1 (Huber) for value head
         value_criterion = nn.SmoothL1Loss()
         # value_criterion = nn.MSELoss()
-        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=1e-5)
-        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
+        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=1e-4)
+        # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
+        
+        # try cyclic lr for faster learning and possible convergence
+        scheduler = CyclicLR(optimizer=optimizer, base_lr=1e-5, max_lr=1e-3, step_size_up=2000)
 
         # backup weights in case training collapses
         backup_state = {k: v.clone().cpu() for k, v in self.policy_value_network.state_dict().items()}

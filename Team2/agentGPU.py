@@ -10,7 +10,7 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model1 = SLPolicyValueNetwork().to(device)
-    model1.load_state_dict(torch.load("checkpoint_stockfish_only.pth", map_location=torch.device("cuda"))["model"])
+    # model1.load_state_dict(torch.load("checkpoint_stockfish_only.pth", map_location=torch.device("cuda"))["model"])
 
     # only train the first model
     agent = Agent(policy_value_network=model1, c_puct=1.0, dirichlet_alpha=0.3, dirichlet_epsilon=0.25)
@@ -21,7 +21,7 @@ if __name__ == "__main__":
     # print(examples[0])
 
     # train fresh network with stockfish
-    agent.stockfish_only_training(iterations=100, num_games=200, train_to_test_ratio=0.8, num_simulations=2, temperature=0.5, workers=14)
+    agent.stockfish_only_training(iterations=50, num_games=70, train_to_test_ratio=0.8, num_simulations=100, temperature=0.5, workers=14)
 
     # # benchmark
     # import time
