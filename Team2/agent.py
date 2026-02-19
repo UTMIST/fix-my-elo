@@ -218,7 +218,7 @@ class Agent:
         # prefer SmoothL1 (Huber) for value head
         value_criterion = nn.SmoothL1Loss()
         # value_criterion = nn.MSELoss()
-        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=1e-4)
+        optimizer = optim.AdamW(self.policy_value_network.parameters(), lr=1e-3, weight_decay=1e-4)
         # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
         
         # try cyclic lr for faster learning and possible convergence
@@ -230,7 +230,7 @@ class Agent:
         start_time = time.time()
         # keep a rolling buffer of examples from recent epochs (last N epochs)
         recent_epoch_examples = []
-        max_epoch_buffer = 5
+        max_epoch_buffer = 100
 
         for epoch in range(iterations):
             all_examples = []
@@ -253,23 +253,17 @@ class Agent:
                         print(f"  generated {i}/{num_games} games — elapsed: {time.time() - start_time:.2f}s")
 
             
-
-            # add current epoch's examples to recent buffer and concatenate last N epochs
             recent_epoch_examples.append(all_examples)
             if len(recent_epoch_examples) > max_epoch_buffer:
                 recent_epoch_examples.pop(0)
 
-            # combine examples from the last up to `max_epoch_buffer` epochs
             combined_examples = []
             for ex_list in recent_epoch_examples:
                 combined_examples.extend(ex_list)
-
-            # Build datasets (only drop malformed entries; keep -1 labels so value trains on all examples)
-            combined_examples = [ex for ex in combined_examples if len(ex) >= 3]
             train_dataloader, test_dataloader = examples_to_dataset(combined_examples, train_to_test_ratio)
 
             # Train
-            print("[Stockfish-Only] training on collected examples")
+            print(f"[Stockfish-Only] training on collected examples using {len(recent_epoch_examples)} epochs of data")
             self.policy_value_network.train()
             for batch_idx, (data, target) in enumerate(train_dataloader):
                 data = data.to(device)
@@ -324,18 +318,18 @@ class Agent:
                 optimizer.param_groups[0]['lr']
                 ))
             
-            # test = chess.Board()
-            # print(f"eval of initial position: {self.evaluate_value(test.fen())}")
+            with open("stockfish_only_training_log.txt", "a") as log_file:
+                log_file.write(f"epoch: {epoch+1}, test loss: {valid_loss:.6f}, lr: {optimizer.param_groups[0]['lr']}\n")
 
             # Checkpoint
             torch.save({
                 "model": self.policy_value_network.state_dict(),
                 "optimizer": optimizer.state_dict(),
-            }, "checkpoint_stockfish_only.pth")
-            print("[Stockfish-Only] checkpoint saved: checkpoint_stockfish_only.pth")
+            }, "SL_trained_stockfish_trained.pth")
+            print("[Stockfish-Only] checkpoint saved: SL_trained_stockfish_trained.pth")
 
             #Generate examplar game every epoch
-            self.agent_vs_stockfish(2, 10, "pgn_files/examplar_games.pgn", epoch)
+            self.agent_vs_stockfish(2, 800, "pgn_files/SL_stockfish_examplar_games.pgn", epoch)
 
     def mcts_self_play(self, num_simulations, resign_moves, resign_threshold):
         '''
