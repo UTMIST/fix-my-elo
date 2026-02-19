@@ -106,108 +106,7 @@ class Agent:
             board_tensor = fen_to_board_tensor(fen).unsqueeze(0).to(device)
             _, v = self.policy_value_network(board_tensor)
             return float(v.item())
-
-    def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0):
-        """
-        export a game between stockfish and the model. stockfish starts first.
-        """
-        self.stockfish.set_depth(1)
-
-        cpu_start = time.process_time()
-        for i in range(num_games):
-            board = chess.Board()
-            moves = []
-            game = chess.pgn.Game()
-            game.headers["Event"] = f"Epoch {epoch} Game {i}"
-            node = None
-            stockfish_turn = (-1)**i
-
-            if stockfish_turn == 1:
-                game.headers["White"] = "Stockfish"
-                game.headers["Black"] = "Model"
-            else:
-                game.headers["White"] = "Model"
-                game.headers["Black"] = "Stockfish"
-
-            while not board.is_game_over():
-                if stockfish_turn == 1:
-                    self.stockfish.set_fen_position(board.fen())
-                    move = self.stockfish.get_best_move()
-                    moves.append(move)
-                    board.push_uci(move)
-                else:
-                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.1)
-                    moves.append(move)
-                    board.push_uci(move)
-
-                stockfish_turn *= -1
-
-                if node is None:
-                    node = game.add_variation(chess.Move.from_uci(move))
-                else:
-                    node = node.add_variation(chess.Move.from_uci(move))
-            game.headers["Result"] = board.result()
-            with open(path_to_output, "a") as file:
-                print(game, file=file, end="\n\n")
-        
-        cpu_end = time.process_time()
-        cpu_elapsed = cpu_end - cpu_start
-        print(f"took {cpu_elapsed:.4f} seconds")
-
-
-    def stockfish_self_play(self, num_simulations, temperature):
-        """
-        Play 1 game where stockfish is white, and another with stockfish as black.
-        Returns the games
-        """
-        board = chess.Board()
-        all = [] # stores state, move, and winner for training
-        device = next(self.policy_value_network.parameters()).device
-        self.policy_value_network.eval()
-        self.stockfish.set_depth(10)
-        stockfish_turn = 1
-        moves = []
-
-        for i in range(2):
-            board = chess.Board()  # reset board for each game
-            examples = []
-
-            if i == 1:
-                stockfish_turn = -1
-            
-            while True:
-                if board.is_game_over(): 
-                    cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
-                    reward = cases[board.result()]
-                    # assign rewards relative to the player to move at each example
-                    if reward == 0:
-                        for example in examples:
-                            example[2] = 0
-                    else:
-                        for i, example in enumerate(examples):
-                            multiplier = 1 if (i % 2) == 0 else -1
-                            example[2] = reward * multiplier
-
-                    all.extend(examples)
-                    break
-                
-                board_fen = board.fen()
-                board_tensor = fen_to_board_tensor(board_fen).unsqueeze(0).to(device)
-
-                if stockfish_turn == 1:
-                    self.stockfish.set_fen_position(board.fen())
-                    move = self.stockfish.get_best_move()
-                    board.push_uci(move)
-                else:
-                    move = self.select_move(game_state=board, num_simulations=num_simulations, temperature = temperature).item()
-                    board.push_uci(move)
-
-                examples.append([board_tensor.squeeze(0), move_tensor_to_label(uci_to_tensor(move)), None])
-                stockfish_turn *= -1
-                moves.append(move)
-        
-        return all
-
+    
     def stockfish_only_training(self, iterations, num_games: int, train_to_test_ratio: float, num_simulations: int, temperature: int, workers: int):
         """
 
@@ -330,6 +229,109 @@ class Agent:
 
             #Generate examplar game every epoch
             self.agent_vs_stockfish(2, 800, "pgn_files/SL_stockfish_examplar_games.pgn", epoch)
+
+
+    def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0):
+        """
+        export a game between stockfish and the model. stockfish starts first.
+        """
+        self.stockfish.set_depth(1)
+
+        cpu_start = time.process_time()
+        for i in range(num_games):
+            board = chess.Board()
+            moves = []
+            game = chess.pgn.Game()
+            game.headers["Event"] = f"Epoch {epoch} Game {i}"
+            node = None
+            stockfish_turn = (-1)**i
+
+            if stockfish_turn == 1:
+                game.headers["White"] = "Stockfish"
+                game.headers["Black"] = "Model"
+            else:
+                game.headers["White"] = "Model"
+                game.headers["Black"] = "Stockfish"
+
+            while not board.is_game_over():
+                if stockfish_turn == 1:
+                    self.stockfish.set_fen_position(board.fen())
+                    move = self.stockfish.get_best_move()
+                    moves.append(move)
+                    board.push_uci(move)
+                else:
+                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.1)
+                    moves.append(move)
+                    board.push_uci(move)
+
+                stockfish_turn *= -1
+
+                if node is None:
+                    node = game.add_variation(chess.Move.from_uci(move))
+                else:
+                    node = node.add_variation(chess.Move.from_uci(move))
+            game.headers["Result"] = board.result()
+            with open(path_to_output, "a") as file:
+                print(game, file=file, end="\n\n")
+        
+        cpu_end = time.process_time()
+        cpu_elapsed = cpu_end - cpu_start
+        print(f"took {cpu_elapsed:.4f} seconds")
+
+
+    def stockfish_self_play(self, num_simulations, temperature):
+        """
+        Play 1 game where stockfish is white, and another with stockfish as black.
+        Returns the games
+        """
+        board = chess.Board()
+        all = [] # stores state, move, and winner for training
+        device = next(self.policy_value_network.parameters()).device
+        self.policy_value_network.eval()
+        self.stockfish.set_depth(10)
+        stockfish_turn = 1
+        moves = []
+
+        for i in range(2):
+            board = chess.Board()  # reset board for each game
+            examples = []
+
+            if i == 1:
+                stockfish_turn = -1
+            
+            while True:
+                if board.is_game_over(): 
+                    cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
+                    reward = cases[board.result()]
+                    # assign rewards relative to the player to move at each example
+                    if reward == 0:
+                        for example in examples:
+                            example[2] = 0
+                    else:
+                        for i, example in enumerate(examples):
+                            multiplier = 1 if (i % 2) == 0 else -1
+                            example[2] = reward * multiplier
+
+                    all.extend(examples)
+                    break
+                
+                board_fen = board.fen()
+                board_tensor = fen_to_board_tensor(board_fen).unsqueeze(0).to(device)
+
+                if stockfish_turn == 1:
+                    self.stockfish.set_fen_position(board.fen())
+                    move = self.stockfish.get_best_move()
+                    board.push_uci(move)
+                else:
+                    move = self.select_move(game_state=board, num_simulations=num_simulations, temperature = temperature).item()
+                    board.push_uci(move)
+
+                examples.append([board_tensor.squeeze(0), move_tensor_to_label(uci_to_tensor(move)), None])
+                stockfish_turn *= -1
+                moves.append(move)
+        
+        return all
+    
 
     def mcts_self_play(self, num_simulations, resign_moves, resign_threshold):
         '''
