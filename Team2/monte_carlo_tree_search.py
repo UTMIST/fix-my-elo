@@ -41,7 +41,10 @@ class Monte_Carlo_Tree_Search:
 
         # base case, terminal state
         if game_state.is_game_over():
-            return -1
+            if game_state.result() == "1/2-1/2":
+                return 0
+            # mate returns huge value
+            return -100000000000
         
         # if state not visited, initialize node
         if board not in self.visited:

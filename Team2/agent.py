@@ -36,6 +36,7 @@ class Agent:
         self.dirichlet_alpha = dirichlet_alpha
         self.dirichlet_epsilon = dirichlet_epsilon
         self.rng = np.random.default_rng()
+        self.stockfish = Stockfish(path=r"stockfish/stockfish-ubuntu-x86-64-avx2")
 
 
     def select_move(self, game_state, num_simulations, temperature=0.0): # temperature ONLY for pitting agents against eachother, not for inference (its fine if engine selects dookie move once in a while for pitting because ev is what matters anyways, but in inference we want best move possible)
@@ -107,8 +108,10 @@ class Agent:
             return float(v.item())
 
     def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0):
-        stockfish = Stockfish(path=r"C:\Users\masar\Downloads\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe")
-        stockfish.set_depth(10)
+        """
+        export a game between stockfish and the model. stockfish starts first.
+        """
+        self.stockfish.set_depth(1)
 
         cpu_start = time.process_time()
         for i in range(num_games):
@@ -128,8 +131,8 @@ class Agent:
 
             while not board.is_game_over():
                 if stockfish_turn == 1:
-                    stockfish.set_fen_position(board.fen())
-                    move = stockfish.get_best_move()
+                    self.stockfish.set_fen_position(board.fen())
+                    move = self.stockfish.get_best_move()
                     moves.append(move)
                     board.push_uci(move)
                 else:
@@ -155,13 +158,13 @@ class Agent:
     def stockfish_self_play(self, num_simulations, temperature):
         """
         Play 1 game where stockfish is white, and another with stockfish as black.
+        Returns the games
         """
         board = chess.Board()
         all = [] # stores state, move, and winner for training
         device = next(self.policy_value_network.parameters()).device
         self.policy_value_network.eval()
-        stockfish = Stockfish(path=r"C:\Users\masar\Downloads\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe")
-        stockfish.set_depth(10)
+        self.stockfish.set_depth(10)
         stockfish_turn = 1
         moves = []
 
@@ -192,8 +195,8 @@ class Agent:
                 board_tensor = fen_to_board_tensor(board_fen).unsqueeze(0).to(device)
 
                 if stockfish_turn == 1:
-                    stockfish.set_fen_position(board.fen())
-                    move = stockfish.get_best_move()
+                    self.stockfish.set_fen_position(board.fen())
+                    move = self.stockfish.get_best_move()
                     board.push_uci(move)
                 else:
                     move = self.select_move(game_state=board, num_simulations=num_simulations, temperature = temperature).item()
