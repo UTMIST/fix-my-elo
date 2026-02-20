@@ -1,0 +1,80 @@
+[Event "Epoch 0 Game 0"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Stockfish"]
+[Black "Model"]
+[Result "1-0"]
+
+1. e4 d6 2. d4 e5 3. Nf3 exd4 4. Nxd4 Qe7 5. Nc3 c5 6. Bb5+ Bd7 7. Nf5 Bxb5 8. Nxe7 Kxe7 9. Nd5+ Ke6 10. Qg4+ Ke5 11. Qf5+ Kd4 12. c3+ Kd3 13. Bg5 Bc6 14. O-O-O+ Ke2 15. Qf3# 1-0
+
+[Event "Epoch 0 Game 1"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Model"]
+[Black "Stockfish"]
+[Result "0-1"]
+
+1. e4 e5 2. Nf3 d6 3. Be2 Be7 4. O-O Nf6 5. d3 h6 6. h3 a5 7. a4 Be6 8. Be3 Na6 9. c3 O-O 10. Nbd2 Re8 11. b3 Bf8 12. Ra2 Bd7 13. Re1 d5 14. Rf1 b6 15. Ra3 Bxa3 16. exd5 Bf8 17. d4 exd4 18. Nxd4 Nxd5 19. Bb5 Bxb5 20. axb5 Nc5 21. N2f3 Kh8 22. Bd2 Ne4 23. Re1 Ndf6 24. Bc1 c5 25. Qc2 cxd4 26. cxd4 Rc8 27. Qd3 Bd6 28. Ne5 Bxe5 29. dxe5 Qxd3 30. exf6 Nxf6 31. Rxe8+ Rxe8 32. Be3 Qb1+ 33. Kh2 Ng4+ 34. hxg4 h5 35. gxh5 Qf1 36. g3 a4 37. bxa4 Rb8 38. h6 Kh7 39. hxg7 f5 40. g4 Rg8 41. Kg3 Qg1+ 42. Kf4 Qxg4+ 43. Ke5 Re8+ 44. Kd6 Rd8+ 45. Ke5 Qxg7+ 46. Kxf5 Rf8+ 47. Ke6 Rf6+ 48. Kd5 Qf7+ 49. Ke4 Qc4+ 50. Ke5 Qe6+ 51. Kd4 Qg4+ 52. Ke5 Rf5+ 53. Kd6 Qb4+ 54. Kc6 Rf6+ 55. Kb7 Qe4+ 56. Ka7 Qxa4+ 57. Kb8 Rf7 58. Kc8 Qa8# 0-1
+
+[Event "Epoch 1 Game 0"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Stockfish"]
+[Black "Model"]
+[Result "1-0"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Bxc6 dxc6 5. Nxe5 Qh4 6. Nc3 Qe7 7. Nc4 b5 8. Na5 Qa3 9. bxa3 Nf6 10. Qf3 Be6 11. Nb3 a5 12. Rg1 b4 13. Ne2 Nxe4 14. Qxe4 bxa3 15. Qxc6+ Ke7 16. Qxc7+ Kf6 17. Qf4+ Bf5 18. Qd4+ Ke7 19. Qe3+ Kd8 20. Qd4+ Bd7 21. Qh4+ Be7 22. Qxe7+ Kxe7 23. Bxa3+ Kd8 24. Nc5 Bc6 25. Rd1 a4 26. f3 Kc7 27. Nd3 Rhd8 28. h4 Rxd3 29. cxd3 Kb6 30. Rb1+ Ka5 31. Bb4+ Ka6 32. Rb2 Rb8 33. Ba3 Rxb2 34. Bxb2 Ka5 35. Bc3+ Kb6 36. Bd4+ Kc7 37. f4 Bd7 38. Kf2 Kd6 39. Be5+ Ke6 40. Bxg7 Bb5 41. f5+ Kd5 42. Nf4+ Kc6 43. Rc1+ Kb7 44. g4 Bc6 45. Rb1+ Kc7 46. Ke3 h6 47. Ne6+ fxe6 48. Be5+ Kd7 49. Bb8 Bf3 50. fxe6+ Ke7 51. Kxf3 Kxe6 52. Rb6+ Kd7 53. Rd6+ Kc8 54. d4 Kxb8 55. Rd8+ Kc7 56. Re8 h5 57. Re7+ Kd6 58. Re3 hxg4+ 59. Ke2 Kd5 60. Rg3 Kxd4 61. Rxg4+ Kc5 62. d4+ Kd5 63. Rg5+ Ke4 64. Rg4+ Kd5 65. Rg5+ Kxd4 66. Rg4+ Ke5 67. Rg5+ Kf4 68. Rg7 Ke4 69. Re7+ Kd4 70. Rd7+ Kc3 71. a3 Kc2 72. Kf1 Kb3 73. h5 Kxa3 74. h6 Kb2 75. h7 a3 76. Ke1 a2 77. h8=Q+ Ka3 78. Qc3+ Ka4 79. Ra7+ Kb5 80. Qb2+ Kc4 81. Qxa2+ Kc3 82. Qa3+ Kd4 83. Qa1+ Kc5 84. Ra2 Kb6 85. Kd2 Kb5 86. Qg1 Kc6 87. Ra1 Kd5 88. Kd1 Kc6 89. Qg7 Kc5 90. Qh8 Kc4 91. Qg7 Kd5 92. Qg1 Ke6 93. Qg2 Ke5 94. Qg1 Kd6 95. Qg7 Kd5 96. Qg1 Ke6 97. Qg2 Ke5 98. Qg1 Kf4 99. Qg2 Kf5 100. Qg7 Ke6 101. Qg2 Ke5 102. Qg1 Kd6 103. Qg7 Kd5 104. Qg1 Ke6 105. Qg2 Ke5 106. Qg1 Ke4 107. Qc5 Kd3 108. Kc1 Ke2 109. Qa3 Kf1 110. Qb4 Kg2 111. Ra2+ Kf1 112. Ra1 Kg2 113. Ra2+ Kf1 114. Ra1 Kg2 115. Ra2+ Kg3 116. Kd2 Kh2 117. Qa5 Kg3 118. Kd1 Kh4 119. Ra4+ Kg3 120. Rc4 Kg2 121. Rf4 Kg3 122. Rc4 Kg2 123. Rf4 Kg3 124. Rg4+ Kf2 125. Rf4+ Ke3 126. Qd2# 1-0
+
+[Event "Epoch 1 Game 1"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Model"]
+[Black "Stockfish"]
+[Result "0-1"]
+
+1. e4 c6 2. d4 d5 3. exd5 cxd5 4. Bb5+ Nc6 5. Nf3 Qa5+ 6. c3 Qxb5 7. a4 Qa6 8. Bd2 Bg4 9. h3 Bxf3 10. Qxf3 e6 11. Qh5 Nf6 12. Qe5 Ne4 13. Qf4 e5 14. Qxe4 dxe4 15. Be3 Kd7 16. Nd2 Re8 17. d5 Nb4 18. Nxe4 Nd3+ 19. Kd2 Kc8 20. a5 Nxf2 21. Bxf2 Qh6+ 22. Ke2 Qa6+ 23. c4 Qxc4+ 24. Kf3 Qb3+ 25. Be3 Kb8 26. Kg4 f5+ 27. Kxf5 Qxd5 28. Nc3 g6+ 29. Kf6 Qe6+ 30. Kg5 Be7+ 31. Kh6 g5+ 32. Kh5 Qf7+ 33. Kg4 Qc4+ 34. Kf5 Qf7+ 35. Kxe5 Bc5# 0-1
+
+[Event "Epoch 2 Game 0"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Stockfish"]
+[Black "Model"]
+[Result "1-0"]
+
+1. e4 c5 2. Nf3 e6 3. d4 cxd4 4. Nxd4 a5 5. Bf4 Bb4+ 6. c3 Bc5 7. Nb5 Bxf2+ 8. Kxf2 e5 9. Nd6+ Kf8 10. Be3 Nf6 11. Ke1 Qc7 12. Nb5 Qxc3+ 13. N1xc3 Ng4 14. Bc5+ Kg8 15. Qc1 Ne3 16. Bxe3 Nc6 17. Kd2 Nb4 18. h3 Nc2 19. Qxc2 Kf8 20. Re1 h5 21. Bc5+ d6 22. Bxd6+ Ke8 23. Qd3 Kd7 24. Bxe5+ Ke7 25. Bd6+ Ke6 26. Nc7+ Kf6 27. e5+ Kg5 28. Qe3+ Kf5 29. Bd3# 1-0
+
+[Event "Epoch 2 Game 1"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Model"]
+[Black "Stockfish"]
+[Result "1/2-1/2"]
+
+1. e4 c5 2. Nf3 e6 3. Nc3 Ne7 4. d4 cxd4 5. Nxd4 a6 6. Be3 b5 7. Be2 Bb7 8. O-O b4 9. Na4 Bxe4 10. f3 Bb7 11. Re1 Nd5 12. Qd3 Nxe3 13. Qxe3 Be7 14. Nf5 exf5 15. Rad1 O-O 16. Qxe7 Qxe7 17. Bxa6 Qxe1+ 18. Rxe1 Bxa6 19. Nc5 f4 20. Nxa6 Nxa6 21. Re7 Kh8 22. a3 bxa3 23. bxa3 Rad8 24. a4 Nc7 25. Re5 f6 26. Re7 Ne6 27. Kf2 f5 28. Ke2 Rf6 29. c3 h6 30. Kd3 h5 31. Kc4 Nf8 32. a5 Ra8 33. Rxd7 Rc8+ 34. Kd3 Nxd7 35. h3 Re8 36. a6 Kg8 37. a7 Rfe6 38. a8=Q Nc5+ 39. Kc4 Rxa8 40. Kb5 Rc8 41. Kc4 Ne4+ 42. Kd4 Rd8+ 43. Kc4 Rc6+ 44. Kb5 Rc5+ 45. Ka4 Ra5+ 46. Kb3 Ra3+ 47. Kc2 Nxc3 48. Kb2 Rd2+ 49. Kxa3 Rd3 50. Kb4 Rd8 51. Kc5 Nb1 52. Kc4 h4 53. Kb5 Rd6 54. Kc5 Rf6 55. Kd5 Rb6 56. Kc5 Rf6 57. Kd5 Rb6 58. Kc4 g6 59. Kd5 Rb8 60. Kc4 Rd8 61. Kb5 g5 62. Kc4 Rd7 63. Kb5 Rd8 64. Kc4 Rd7 65. Kb5 Rd8 66. Kc4 Rd7 67. Kb5 Rd8 68. Kc4 Rd7 69. Kb5 Rd6 70. Kc5 Rd1 71. Kc4 Rd7 1/2-1/2
+
+[Event "Epoch 3 Game 0"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Stockfish"]
+[Black "Model"]
+[Result "1-0"]
+
+1. e4 e5 2. Nf3 Nf6 3. Nxe5 Nxe4 4. Bc4 d5 5. Bb5+ c6 6. Be2 Bd6 7. d4 Bxe5 8. dxe5 Qe7 9. Bf4 Qb4+ 10. Nd2 Qxb2 11. Nxe4 dxe4 12. O-O Qc3 13. Qd6 Qd4 14. Qxd4 O-O 15. Kh1 Bf5 16. Qd1 Be6 17. h4 Re8 18. Rg1 f5 19. exf6 gxf6 20. Qe1 Kh8 21. a4 Bg4 22. Bxg4 f5 23. Qc3+ Kg8 24. Qb3+ Kf8 25. Bd6+ Kg7 26. Qc3+ Kg6 27. h5+ Kf7 28. Qb3+ Kf6 29. Qb2+ Kg5 30. Qg7+ Kh4 31. Bg3# 1-0
+
+[Event "Epoch 3 Game 1"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Model"]
+[Black "Stockfish"]
+[Result "0-1"]
+
+1. e4 c5 2. Nf3 e6 3. Nc3 Ne7 4. d4 cxd4 5. Qxd4 Nbc6 6. Qb4 Nxb4 7. a3 Nxc2+ 8. Kd1 Nxa1 9. Bb5 a6 10. Be2 d5 11. exd5 Qxd5+ 12. Nxd5 Nxd5 13. Nd4 Bd7 14. Nb3 Nxb3 15. f3 Nc3+ 16. bxc3 Nc5 17. Re1 Ba4+ 18. Kd2 Rd8+ 19. Ke3 h5 20. c4 Bd6 21. Rd1 Bxd1 22. Bxd1 Be5 23. h3 Bd4+ 24. Kd2 Be5+ 25. Ke3 Bd4+ 26. Kd2 Be5+ 27. Ke3 Bd4+ 28. Kd2 Be5+ 29. Kc2 f6 30. h4 Rg8 31. g3 b6 32. f4 Bxf4 33. gxf4 g6 34. Be2 Ne4 35. Bd3 f5 36. Bxe4 fxe4 37. a4 g5 38. fxg5 a5 39. c5 bxc5 40. Kb3 Rd3+ 41. Kc2 Rd8 42. Bf4 e3 43. Bxe3 c4 44. Bd4 Rf8 45. Bb6 Rd5 46. g6 Rg8 47. g7 Rxg7 48. Bxa5 Rg2+ 49. Bd2 Rdxd2+ 50. Kc3 Rc2+ 51. Kb4 Kd7 52. a5 Rge2 53. Kb5 Red2 54. a6 Ke7 55. a7 Rd8 56. Kc6 Rc8+ 57. Kb7 Rf8 58. a8=Q Rb2+ 59. Ka6 Rxa8# 0-1
+
