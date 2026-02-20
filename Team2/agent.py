@@ -39,7 +39,7 @@ class Agent:
         self.stockfish = Stockfish(path=r"stockfish/stockfish-ubuntu-x86-64-avx2")
 
 
-    def select_move(self, game_state, num_simulations, temperature=0.0): # temperature ONLY for pitting agents against eachother, not for inference (its fine if engine selects dookie move once in a while for pitting because ev is what matters anyways, but in inference we want best move possible)
+    def select_move(self, game_state, num_simulations, temperature=0.0):
         '''
         Selects the best move based on the policy network's predictions.
         '''
@@ -55,12 +55,15 @@ class Agent:
         moves = list(mcts.frequency_action[board].keys())
         counts = np.array(list(mcts.frequency_action[board].values()), dtype=np.float64)
 
-        # combined = zip(moves, counts)
-        # combined = sorted(combined, key=lambda x: x[1].item(), reverse=True)
+        combined = zip(moves, counts)
+        combined = sorted(combined, key=lambda x: x[1].item(), reverse=True)
 
         # # debuggning
-        # print(combined)
-        # print(self.policy_value_network(fen_to_board_tensor(game_state.fen()).unsqueeze(0).to(device))[1].item())
+        for i, item in enumerate(combined):
+            if i == 5:
+                break
+            print(f"move: {item[0]}, count: {item[1].item()}")
+        print("final eval: ", mcts.expected_reward[board][combined[0][0]])
 
         if counts.size == 0:
             raise RuntimeError(f"MCTS returned no visit counts for board: {board}")

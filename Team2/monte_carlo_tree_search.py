@@ -43,8 +43,8 @@ class Monte_Carlo_Tree_Search:
         if game_state.is_game_over():
             if game_state.result() == "1/2-1/2":
                 return 0
-            # mate returns huge value
-            return -100000000000
+            # mate returns +1 because it doesn't get negated like other evals when it returns -v or -state_val
+            return -(-1)
         
         # if state not visited, initialize node
         if board not in self.visited:
