@@ -1,4 +1,6 @@
 # we need to run on a py file instead of a jupyter notebook otherwise multiprocessing will not work properly
+import chess
+
 from agent import Agent, pit
 from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
 import torch
@@ -8,7 +10,7 @@ if __name__ == "__main__":
     # SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     # MODEL_PATH_1 = os.path.join(SCRIPT_DIR, "model_files", "lab_trained_66.pth")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda")
     model1 = SLPolicyValueNetwork().to(device)
     # model1.load_state_dict(torch.load("checkpoint_stockfish_only.pth", map_location=torch.device("cuda"))["model"])
 
@@ -21,7 +23,15 @@ if __name__ == "__main__":
     # print(examples[0])
 
     # train fresh network with stockfish
-    agent.stockfish_only_training(iterations=50, num_games=70, train_to_test_ratio=0.8, num_simulations=100, temperature=0.5, workers=14)
+    # agent.stockfish_only_training(iterations=50, num_games=70, train_to_test_ratio=0.8, num_simulations=100, temperature=0.5, workers=14)
+    
+    board = chess.Board()
+    move = agent.select_move(board, num_simulations=1000, temperature=0.0)
+    print(f"Selected move: {move}")
+    move = agent.select_move(board, num_simulations=1000, temperature=0.0)
+    print(f"Selected move: {move}")
+    move = agent.select_move(board, num_simulations=1000, temperature=0.0)
+    print(f"Selected move: {move}")
 
     # # benchmark
     # import time
