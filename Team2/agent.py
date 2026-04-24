@@ -12,10 +12,14 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CyclicLR
 from multiprocessing import get_context
+import torch.multiprocessing as mp
 from monte_carlo_tree_search import Monte_Carlo_Tree_Search
 from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
 from data_processing import fen_to_board_tensor, uci_to_tensor, move_tensor_to_label
 from stockfish import Stockfish
+
+# Use file-backed storage for tensor sharing in multiprocessing instead of /dev/shm
+mp.set_sharing_strategy('file_system')
 
 # allow each worker to only use 1 thread to prevent saturation
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -55,15 +59,15 @@ class Agent:
         moves = list(mcts.frequency_action[board].keys())
         counts = np.array(list(mcts.frequency_action[board].values()), dtype=np.float64)
 
-        combined = zip(moves, counts)
-        combined = sorted(combined, key=lambda x: x[1].item(), reverse=True)
 
-        # # debuggning
-        for i, item in enumerate(combined):
-            if i == 5:
-                break
-            print(f"move: {item[0]}, count: {item[1].item()}")
-        print("final eval: ", mcts.expected_reward[board][combined[0][0]])
+        # debuggning
+        # combined = zip(moves, counts)
+        # combined = sorted(combined, key=lambda x: x[1].item(), reverse=True)
+        # for i, item in enumerate(combined):
+        #     if i == 5:
+        #         break
+        #     print(f"move: {item[0]}, count: {item[1].item()}")
+        # print("final eval: ", mcts.expected_reward[board][combined[0][0]])
 
         if counts.size == 0:
             raise RuntimeError(f"MCTS returned no visit counts for board: {board}")
@@ -126,9 +130,6 @@ class Agent:
         # try cyclic lr for faster learning and possible convergence
         scheduler = CyclicLR(optimizer=optimizer, base_lr=1e-5, max_lr=1e-3, step_size_up=2000)
 
-        # backup weights in case training collapses
-        backup_state = {k: v.clone().cpu() for k, v in self.policy_value_network.state_dict().items()}
-
         start_time = time.time()
         # keep a rolling buffer of examples from recent epochs (last N epochs)
         recent_epoch_examples = []
@@ -146,11 +147,9 @@ class Agent:
             ]
 
             ctx = get_context("spawn")
-            output_path = "stockfish_only_examples.pkl"
-            with open(output_path, "ab") as f, ctx.Pool(processes=workers) as pool:
+            with ctx.Pool(processes=workers) as pool:
                 for i, game_examples in enumerate(pool.imap_unordered(stockfish_self_play_worker, worker_args), start=1):
                     all_examples.extend(game_examples)
-                    pickle.dump(game_examples, f)
                     if i % workers == 0 or i == num_games:
                         print(f"  generated {i}/{num_games} games — elapsed: {time.time() - start_time:.2f}s")
 
@@ -221,7 +220,7 @@ class Agent:
                 ))
             
             with open("stockfish_only_training_log.txt", "a") as log_file:
-                log_file.write(f"epoch: {epoch+1}, test loss: {valid_loss:.6f}, lr: {optimizer.param_groups[0]['lr']}\n")
+                log_file.write(f"elapsed: {time.time() - start_time:.2f}s, epoch: {epoch+1}, test loss: {valid_loss:.6f}, lr: {optimizer.param_groups[0]['lr']}\n")
 
             # Checkpoint
             torch.save({
@@ -231,7 +230,7 @@ class Agent:
             print("[Stockfish-Only] checkpoint saved: SL_trained_stockfish_trained.pth")
 
             #Generate examplar game every epoch
-            self.agent_vs_stockfish(2, 800, "pgn_files/SL_stockfish_examplar_games.pgn", epoch)
+            self.agent_vs_stockfish(2, 200, "pgn_files/SL_stockfish_examplar_games.pgn", epoch)
 
 
     def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0):
@@ -263,7 +262,7 @@ class Agent:
                     moves.append(move)
                     board.push_uci(move)
                 else:
-                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.1)
+                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.0)
                     moves.append(move)
                     board.push_uci(move)
 
@@ -291,7 +290,7 @@ class Agent:
         all = [] # stores state, move, and winner for training
         device = next(self.policy_value_network.parameters()).device
         self.policy_value_network.eval()
-        self.stockfish.set_depth(10)
+        self.stockfish.set_depth(20)
         stockfish_turn = 1
         moves = []
 
@@ -332,6 +331,11 @@ class Agent:
                 examples.append([board_tensor.squeeze(0), move_tensor_to_label(uci_to_tensor(move)), None])
                 stockfish_turn *= -1
                 moves.append(move)
+        
+        # Convert tensors to lists before returning to avoid multiprocessing shared storage issues
+        for example in all:
+            if isinstance(example[0], torch.Tensor):
+                example[0] = example[0].tolist()
         
         return all
     
@@ -687,10 +691,11 @@ def examples_to_dataset(examples, train_to_test_ratio):
     train_data = examples[:train_size] # split the dataset
     test_data = examples[train_size:]
 
-    X_train = torch.stack([board for board, move, winner in train_data])  # (N, 8, 8, 12)
+    # Convert lists back to tensors if needed
+    X_train = torch.stack([torch.tensor(board) if isinstance(board, list) else board for board, move, winner in train_data])  # (N, 13, 8, 8)
     t_train = torch.tensor([(move, winner) for board, move, winner in train_data])  # (N, 2)
 
-    X_test = torch.stack([board for board, move, winner in test_data])
+    X_test = torch.stack([torch.tensor(board) if isinstance(board, list) else board for board, move, winner in test_data])
     t_test = torch.tensor([(move, winner) for board, move, winner in test_data])
 
     batch_size = 512 # create DataLoaders
