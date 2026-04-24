@@ -40,7 +40,7 @@ class Agent:
         self.dirichlet_alpha = dirichlet_alpha
         self.dirichlet_epsilon = dirichlet_epsilon
         self.rng = np.random.default_rng()
-        self.stockfish = Stockfish(path=r"stockfish/stockfish-ubuntu-x86-64-avx2")
+        # self.stockfish = Stockfish(path=r"stockfish/stockfish-ubuntu-x86-64-avx2")
 
 
     def select_move(self, game_state, num_simulations, temperature=0.0):
@@ -51,9 +51,7 @@ class Agent:
         self.policy_value_network.eval()
         board = game_state.fen()
         mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set()) # generate new mcts object to save memory
-        
-        for _ in range(num_simulations): 
-            mcts.search(game_state.copy(), True) # perform mcts search
+        mcts.run_simulations(game_state, num_simulations)
 
         # apply temperature with numerical stability and NaN-safety
         moves = list(mcts.frequency_action[board].keys())
@@ -340,7 +338,7 @@ class Agent:
         return all
     
 
-    def mcts_self_play(self, num_simulations, resign_moves, resign_threshold):
+    def mcts_self_play(self, num_simulations, resign_moves, resign_threshold, temperature):
         '''
         executes an iteration of MCTS for the given game state
         num_simulations: number of MCTS simulations to run per move  
@@ -358,12 +356,7 @@ class Agent:
             board_tensor = fen_to_board_tensor(board).unsqueeze(0).to(device)
             
             mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set())
-            for _ in range(num_simulations): 
-                mcts.search(game_state.copy(), True)
-            
-            freqs = np.array(list(mcts.frequency_action[board].values()), dtype=np.float32)
-            probs = freqs / freqs.sum()
-            move = self.rng.choice(list(mcts.frequency_action[board].keys()), p=probs)
+            move = self.select_move(game_state, num_simulations=num_simulations, temperature=temperature)
             
             # store training example
             examples.append([board_tensor.squeeze(0), move_tensor_to_label(uci_to_tensor(move)), None]) # winner to be assigned later
@@ -545,6 +538,7 @@ def self_play_worker(args):
         num_simulations,
         resign_moves,
         resign_threshold,
+        temperature
     ) = args
 
     # force CPU
@@ -565,14 +559,15 @@ def self_play_worker(args):
         return agent.mcts_self_play(
             num_simulations,
             resign_moves,
-            resign_threshold
+            resign_threshold,
+            temperature
         )
 
 
 def stockfish_self_play_worker(args):
     """Worker for multiprocessing Stockfish-vs-model self-play.
 
-    Expected args: (model_state_dict, c_puct, dirichlet_alpha, dirichlet_epsilon, num_simulations)
+    Expected args: (model_state_dict, c_puct, dirichlet_alpha, dirichlet_epsilon, num_simulations, temperature)
     Returns the list of training examples produced by Agent.stockfish_self_play.
     """
     (
