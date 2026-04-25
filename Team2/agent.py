@@ -40,10 +40,10 @@ class Agent:
         self.dirichlet_alpha = dirichlet_alpha
         self.dirichlet_epsilon = dirichlet_epsilon
         self.rng = np.random.default_rng()
-        # self.stockfish = Stockfish(path=r"stockfish/stockfish-ubuntu-x86-64-avx2")
+        self.stockfish = Stockfish(path=r"stockfish/stockfish-ubuntu-x86-64-avx2")
 
 
-    def select_move(self, game_state, num_simulations, temperature=0.0):
+    def select_move(self, game_state, num_simulations, temperature=0.0, debug=False):
         '''
         Selects the best move based on the policy network's predictions.
         '''
@@ -58,19 +58,20 @@ class Agent:
         counts = np.array(list(mcts.frequency_action[board].values()), dtype=np.float64)
 
 
-        # debuggning
-        # combined = zip(moves, counts)
-        # combined = sorted(combined, key=lambda x: x[1].item(), reverse=True)
-        # for i, item in enumerate(combined):
-        #     if i == 5:
-        #         break
-        #     print(f"move: {item[0]}, count: {item[1].item()}")
-        # print("final eval: ", mcts.expected_reward[board][combined[0][0]])
+        # debuggning (show move visits + counts)
+        if debug:
+            combined = zip(moves, counts)
+            combined = sorted(combined, key=lambda x: x[1].item(), reverse=True)
+            for i, item in enumerate(combined):
+                if i == 5:
+                    break
+                print(f"move: {item[0]}, count: {item[1].item()}")
+            print("final eval: ", mcts.expected_reward[board][combined[0][0]])
 
-        if counts.size == 0:
-            raise RuntimeError(f"MCTS returned no visit counts for board: {board}")
+            if counts.size == 0:
+                raise RuntimeError(f"MCTS returned no visit counts for board: {board}")
 
-        # deterministic selection when temperature == 0
+        # # deterministic selection when temperature == 0
         if temperature == 0:
             idx = int(np.argmax(counts))
             return moves[idx]
@@ -117,6 +118,7 @@ class Agent:
 
         """
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.stockfish.set_depth(16)
 
         policy_criterion = nn.CrossEntropyLoss()
         # prefer SmoothL1 (Huber) for value head
@@ -131,7 +133,7 @@ class Agent:
         start_time = time.time()
         # keep a rolling buffer of examples from recent epochs (last N epochs)
         recent_epoch_examples = []
-        max_epoch_buffer = 100
+        max_epoch_buffer = 30
 
         for epoch in range(iterations):
             all_examples = []
@@ -235,7 +237,7 @@ class Agent:
         """
         export a game between stockfish and the model. stockfish starts first.
         """
-        self.stockfish.set_depth(1)
+        self.stockfish.set_depth(15)
 
         cpu_start = time.process_time()
         for i in range(num_games):
@@ -260,7 +262,7 @@ class Agent:
                     moves.append(move)
                     board.push_uci(move)
                 else:
-                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.0)
+                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.0, debug=True)
                     moves.append(move)
                     board.push_uci(move)
 
