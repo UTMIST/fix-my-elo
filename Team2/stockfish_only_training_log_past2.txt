@@ -1,0 +1,5 @@
+elapsed: 765.06s, epoch: 1, test loss: 1.910630, lr: 1.0945789654215332e-05
+elapsed: 1560.55s, epoch: 2, test loss: 2.190905, lr: 1.108457763621118e-05
+elapsed: 2408.63s, epoch: 3, test loss: 2.049781, lr: 1.1014712072210386e-05
+elapsed: 3368.25s, epoch: 4, test loss: 2.084375, lr: 1.1031705980713014e-05
+elapsed: 4246.58s, epoch: 5, test loss: 1.907038, lr: 1.0943901543214452e-05
