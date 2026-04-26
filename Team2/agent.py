@@ -293,11 +293,11 @@ class Agent:
         # prefer SmoothL1 (Huber) for value head
         value_criterion = nn.SmoothL1Loss()
         # value_criterion = nn.MSELoss()
-        optimizer = optim.AdamW(self.policy_value_network.parameters(), lr=1e-3, weight_decay=1e-4) #this lr is overwritten
+        optimizer = optim.AdamW(self.policy_value_network.parameters(), lr=1e-4, weight_decay=1e-4) #this lr is overwritten
         # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
         
         # try cyclic lr for faster learning and possible convergence
-        scheduler = CyclicLR(optimizer=optimizer, base_lr=1e-3, max_lr=1e-1, step_size_up=1000) 
+        scheduler = CyclicLR(optimizer=optimizer, base_lr=1e-4, max_lr=1e-2, step_size_up=1000) 
         scheduler.last_epoch = 1000 #start at max lr
 
         start_time = time.time()
@@ -398,10 +398,10 @@ class Agent:
                 "model": self.policy_value_network.state_dict(),
                 "optimizer": optimizer.state_dict(),
             }, "softmax_stockfish_trained.pth")
-            print("[Stockfish-Only] checkpoint saved: softmax_stockfish_trained.pth")
+            print("[Stockfish-Only] checkpoint saved: stockfish_trained.pth")
 
             #Generate examplar game every epoch
-            self.agent_vs_stockfish(2, 200, "pgn_files/softmax_examplar_games.pgn", epoch)
+            self.agent_vs_stockfish(2, 1000, "pgn_files/stockfish_only_examplar_games.pgn", epoch)
 
 
     def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0):
