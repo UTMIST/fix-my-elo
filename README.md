@@ -39,3 +39,31 @@ Use the configured Python interpreter (example shown below):
 
 - A created checkpoint is architecture-compatible but randomly initialized (not trained).
 - For website inference, point `TEAM2_MODEL_PATH` in `fme-app/.env.local` to your chosen compatible checkpoint.
+
+## Deploying Without Committing `.pth`
+
+For deployment, keep the model file out of git and host it on a free public file service such as Hugging Face Hub or a GitHub Release asset.
+
+The Docker image will download the checkpoint at startup when `TEAM2_MODEL_URL` is set.
+
+### Required environment variables
+
+Set these in Render (or your host's env settings):
+
+- `TEAM2_PYTHON=/usr/bin/python3`
+- `TEAM2_MODEL_URL=<public direct download URL to your .pth file>`
+- `TEAM2_MODEL_PATH=/app/Team2/model_files/model.pth`
+
+### How it works
+
+1. The container starts.
+2. `docker-entrypoint.sh` checks whether `TEAM2_MODEL_URL` is set.
+3. If the checkpoint is missing at `TEAM2_MODEL_PATH`, it downloads the file.
+4. The Next.js API route calls Team2 using that local file.
+
+### Good free options for the model file
+
+- Hugging Face Hub public file
+- GitHub Release asset
+
+Use a direct download URL, not a webpage URL.

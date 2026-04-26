@@ -13,4 +13,4 @@ services:
       - key: TEAM2_PYTHON
         value: /usr/bin/python3
       - key: TEAM2_MODEL_PATH
-        value: /app/Team2/model_files/sl_policy_value_bootstrap.pth
+        value: /app/Team2/model_files/model.pth
