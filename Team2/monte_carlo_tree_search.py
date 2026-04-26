@@ -64,12 +64,11 @@ class Monte_Carlo_Tree_Search:
         move_labels = np.fromiter((self._get_move_label(move) for move in legal_moves), dtype=np.int64, count=len(legal_moves))
         priors = p[0, move_labels].detach().numpy().astype(np.float32, copy=False)
 
+        print(priors)
+
         if is_root:
             dirichlet_noise = self.rng.dirichlet([self.alpha] * len(legal_moves)).astype(np.float32, copy=False)
             priors = (1 - self.epsilon) * priors + self.epsilon * dirichlet_noise
-        
-        # apply softmax
-        priors = np.exp2(priors)/sum(np.exp2(priors))
 
         freq_board = self.frequency_action[board]
         board_ev = self.expected_reward[board]

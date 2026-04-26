@@ -13,10 +13,10 @@ if __name__ == "__main__":
     device = torch.device("cuda")
     model1 = SLPolicyValueNetwork().to(device)
     # model1.load_state_dict(torch.load("model_files/SL_stockfish_trained_old.pth", map_location=torch.device("cuda"))["model"])
-    model1.load_state_dict(torch.load("SL_trained_stockfish_trained.pth", map_location=torch.device("cuda"))["model"])
+    # model1.load_state_dict(torch.load("SL_trained_stockfish_trained.pth", map_location=torch.device("cuda"))["model"])
 
     # only train the first model
-    agent = Agent(policy_value_network=model1, c_puct=0.15, dirichlet_alpha=0.3, dirichlet_epsilon=0.3)
+    agent = Agent(policy_value_network=model1, c_puct=2.0, dirichlet_alpha=0.3, dirichlet_epsilon=0.3)
     # agent.training_self_play(num_training_iterations=1, num_games=4, train_to_test_ratio=0.8, num_simulations=10, resign_moves=20, resign_threshold=0.95, num_testing_games=20, improvement_threshold=30, temperature=0.1)
 
     # example games

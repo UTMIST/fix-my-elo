@@ -115,10 +115,10 @@ class Agent:
     
     def stockfish_only_training(self, iterations, num_games: int, train_to_test_ratio: float, num_simulations: int, temperature: int, workers: int):
         """
-
+        train against stockfish
         """
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.stockfish.set_depth(30)
+        self.stockfish.set_depth(10)
 
         policy_criterion = nn.CrossEntropyLoss()
         # prefer SmoothL1 (Huber) for value head
@@ -226,11 +226,11 @@ class Agent:
             torch.save({
                 "model": self.policy_value_network.state_dict(),
                 "optimizer": optimizer.state_dict(),
-            }, "SL_trained_stockfish_trained.pth")
-            print("[Stockfish-Only] checkpoint saved: SL_trained_stockfish_trained.pth")
+            }, "softmax_stockfish_trained.pth")
+            print("[Stockfish-Only] checkpoint saved: softmax_stockfish_trained.pth")
 
             #Generate examplar game every epoch
-            self.agent_vs_stockfish(2, 200, "pgn_files/SL_stockfish_examplar_games.pgn", epoch)
+            self.agent_vs_stockfish(2, 200, "pgn_files/softmax_examplar_games.pgn", epoch)
 
 
     def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0):
