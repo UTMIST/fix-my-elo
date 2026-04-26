@@ -1,11 +1,10 @@
 import { useState, useCallback } from 'react';
 
-export function useGameNavigation(games, currentGameIndex) {
+export function useGameNavigation(moves) {
   const [currentMoveIndex, setCurrentMoveIndex] = useState(-1);
 
   const goToMove = useCallback((index) => {
-    const maxIndex = (games[currentGameIndex]?.moves.length || 0) - 1;
-    console.log('goToMove called with:', index, 'Max:', maxIndex);
+    const maxIndex = (moves?.length || 0) - 1;
 
     if (index < -1) {
       setCurrentMoveIndex(-1);
@@ -14,15 +13,15 @@ export function useGameNavigation(games, currentGameIndex) {
     } else {
       setCurrentMoveIndex(index);
     }
-  }, [games, currentGameIndex]);
+  }, [moves]);
 
   const goToStart = useCallback(() => goToMove(-1), [goToMove]);
   const goToPrevious = useCallback(() => goToMove(currentMoveIndex - 1), [goToMove, currentMoveIndex]);
   const goToNext = useCallback(() => goToMove(currentMoveIndex + 1), [goToMove, currentMoveIndex]);
   const goToEnd = useCallback(() => {
-    const maxIndex = (games[currentGameIndex]?.moves.length || 0) - 1;
+    const maxIndex = (moves?.length || 0) - 1;
     goToMove(maxIndex);
-  }, [goToMove, games, currentGameIndex]);
+  }, [goToMove, moves]);
 
   return {
     currentMoveIndex,

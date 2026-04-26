@@ -2,52 +2,120 @@
 
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
 export default function ChessBoard({
   moves,
   currentMoveIndex,
   boardOrientation,
+  interactive = false,
+  onMovePlayed,
+  canUserMove,
 }) {
-  const chessGameRef = useRef(new Chess());
-  const [chessPosition, setChessPosition] = useState(chessGameRef.current.fen());
+  const [moveFrom, setMoveFrom] = useState('');
+  const [optionSquares, setOptionSquares] = useState({});
 
-  useEffect(() => {
-    console.log("[ChessBoard] Rebuilding board");
-    console.log("[ChessBoard] Move index:", currentMoveIndex);
-    console.log("[ChessBoard] Total moves:", moves?.length);
-
-    // Create a fresh game instance
+  const game = useMemo(() => {
     const game = new Chess();
 
-    // Apply all moves up to currentMoveIndex
     for (let i = 0; i <= currentMoveIndex; i++) {
       if (i >= 0 && i < moves.length) {
         try {
           const result = game.move(moves[i]);
           if (!result) {
-            console.error("[ChessBoard] Failed to make move:", moves[i]);
+            console.error('[ChessBoard] Failed to make move:', moves[i]);
           }
         } catch (e) {
-          console.error("[ChessBoard] Failed move:", moves[i], e);
+          console.error('[ChessBoard] Failed move:', moves[i], e);
         }
       }
     }
 
-    const newFen = game.fen();
-    console.log("[ChessBoard] New FEN:", newFen);
-    
-    // Update the ref
-    chessGameRef.current = game;
-    // Update state to trigger re-render
-    setChessPosition(newFen);
+    return game;
   }, [moves, currentMoveIndex]);
+
+  const getMoveOptions = (square) => {
+    const movesFromSquare = game.moves({ square, verbose: true });
+
+    if (!movesFromSquare.length) {
+      setOptionSquares({});
+      return false;
+    }
+
+    const newSquares = {};
+    for (const move of movesFromSquare) {
+      newSquares[move.to] = {
+        background:
+          game.get(move.to) && game.get(move.to)?.color !== game.get(square)?.color
+            ? 'radial-gradient(circle, rgba(0,0,0,.16) 85%, transparent 85%)'
+            : 'radial-gradient(circle, rgba(0,0,0,.16) 25%, transparent 25%)',
+        borderRadius: '50%',
+      };
+    }
+
+    newSquares[square] = { background: 'rgba(253, 224, 71, 0.45)' };
+    setOptionSquares(newSquares);
+    return true;
+  };
+
+  const commitMove = (sourceSquare, targetSquare) => {
+    if (canUserMove && !canUserMove(game)) {
+      return false;
+    }
+
+    try {
+      const move = game.move({
+        from: sourceSquare,
+        to: targetSquare,
+        promotion: 'q',
+      });
+
+      if (!move) return false;
+
+      const baseMoves = moves.slice(0, currentMoveIndex + 1);
+      const updatedMoves = [...baseMoves, move.san];
+      onMovePlayed?.(updatedMoves);
+
+      setMoveFrom('');
+      setOptionSquares({});
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const onSquareClick = ({ square, piece }) => {
+    if (!interactive) return;
+    if (canUserMove && !canUserMove(game)) return;
+
+    if (!moveFrom && piece) {
+      const hasMoveOptions = getMoveOptions(square);
+      if (hasMoveOptions) setMoveFrom(square);
+      return;
+    }
+
+    if (!moveFrom) return;
+
+    const moved = commitMove(moveFrom, square);
+    if (moved) return;
+
+    const hasMoveOptions = getMoveOptions(square);
+    setMoveFrom(hasMoveOptions ? square : '');
+  };
+
+  const onPieceDrop = ({ sourceSquare, targetSquare }) => {
+    if (!interactive || !targetSquare) return false;
+    return commitMove(sourceSquare, targetSquare);
+  };
 
   const chessboardOptions = {
     id: "pgn-viewer-board",
-    position: chessPosition,
+    position: game.fen(),
     boardOrientation: boardOrientation,
-    arePiecesDraggable: false,
+    arePiecesDraggable: interactive,
+    onSquareClick,
+    onPieceDrop,
+    squareStyles: optionSquares,
     animationDuration: 200,
     customBoardStyle: {
       borderRadius: "4px",

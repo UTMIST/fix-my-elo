@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: fix-my-elo
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: TEAM2_PYTHON
+        value: /usr/bin/python3
+      - key: TEAM2_MODEL_PATH
+        value: /app/Team2/model_files/model.pth

@@ -7,7 +7,7 @@ export default function BoardOptions({
 }) {
   return (
     <div className="board-options">
-      {/* <div className="speed-control">
+      <div className="speed-control">
         <div className="speed-label">
           <span>Playback Speed</span>
           <span>{(speed / 1000).toFixed(1)}s</span>
@@ -21,7 +21,7 @@ export default function BoardOptions({
           onChange={(e) => onSpeedChange(Number(e.target.value))}
           className="speed-slider"
         />
-      </div> */}
+      </div>
       <button onClick={onFlipBoard} className="btn-flip">
         Flip Board
       </button>

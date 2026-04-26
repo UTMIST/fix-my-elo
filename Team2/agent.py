@@ -2,6 +2,8 @@ import chess
 import chess.pgn
 import random
 import os
+import shutil
+from datetime import datetime
 import numpy as np
 import pickle
 import time
@@ -16,7 +18,10 @@ import torch.multiprocessing as mp
 from monte_carlo_tree_search import Monte_Carlo_Tree_Search
 from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
 from data_processing import fen_to_board_tensor, uci_to_tensor, move_tensor_to_label
-from stockfish import Stockfish
+try:
+    from stockfish import Stockfish
+except ImportError:
+    Stockfish = None
 
 # Use file-backed storage for tensor sharing in multiprocessing instead of /dev/shm
 mp.set_sharing_strategy('file_system')
@@ -34,13 +39,29 @@ class Agent:
     Agent that uses MCTS with policy and value networks to select moves.
     '''
 
-    def __init__(self, policy_value_network, c_puct, dirichlet_alpha, dirichlet_epsilon):
+    def __init__(self, policy_value_network, c_puct, dirichlet_alpha, dirichlet_epsilon, stockfish_path=None):
         self.policy_value_network = policy_value_network
         self.c_puct = c_puct
         self.dirichlet_alpha = dirichlet_alpha
         self.dirichlet_epsilon = dirichlet_epsilon
         self.rng = np.random.default_rng()
-        self.stockfish = Stockfish(path=r"stockfish/stockfish-ubuntu-x86-64-avx2")
+        self.stockfish = None
+
+        preferred_path = stockfish_path or os.getenv("STOCKFISH_PATH")
+        default_path = r"stockfish/stockfish-ubuntu-x86-64-avx2"
+        resolved_path = preferred_path or (default_path if os.path.exists(default_path) else shutil.which("stockfish"))
+
+        if Stockfish is not None and resolved_path:
+            try:
+                self.stockfish = Stockfish(path=resolved_path)
+            except Exception as e:
+                print(f"[Agent] Stockfish init failed at '{resolved_path}': {e}")
+
+    def _require_stockfish(self):
+        if self.stockfish is None:
+            raise RuntimeError(
+                "Stockfish is not initialized. Install python-stockfish and set STOCKFISH_PATH or pass stockfish_path to Agent()."
+            )
 
 
     def select_move(self, game_state, num_simulations, temperature=0.0, mcts_temperature=2.0, debug=False):
@@ -112,11 +133,159 @@ class Agent:
             board_tensor = fen_to_board_tensor(fen).unsqueeze(0).to(device)
             _, v = self.policy_value_network(board_tensor)
             return float(v.item())
+
+    def _parse_user_move(self, board: chess.Board, raw_move: str):
+        """Try parsing user move as UCI first, then SAN."""
+        raw = raw_move.strip()
+        if not raw:
+            return None
+
+        try:
+            candidate = chess.Move.from_uci(raw)
+            if candidate in board.legal_moves:
+                return candidate
+        except ValueError:
+            pass
+
+        try:
+            return board.parse_san(raw)
+        except ValueError:
+            return None
+
+    def play_vs_user(
+        self,
+        num_simulations: int = 200,
+        temperature: float = 0.0,
+        user_color: str = "white",
+        pgn_output_path: str = None,
+        starting_fen: str = None,
+        debug: bool = False,
+    ):
+        """
+        Interactive terminal game: human vs this agent.
+
+        User commands during their turn:
+        - Enter move in UCI (e2e4) or SAN (Nf3, O-O, exd5).
+        - help: show commands
+        - board: print board again
+        - moves: print legal moves (UCI)
+        - hint: ask agent for best move for the current side to move
+        - resign / quit / exit: resign the game
+        """
+        if user_color.lower() not in {"white", "black"}:
+            raise ValueError("user_color must be 'white' or 'black'")
+
+        board = chess.Board(starting_fen) if starting_fen else chess.Board()
+        user_is_white = user_color.lower() == "white"
+        user_side = chess.WHITE if user_is_white else chess.BLACK
+
+        game = chess.pgn.Game()
+        game.headers["Event"] = "Human vs Team2 Agent"
+        game.headers["Date"] = datetime.now().strftime("%Y.%m.%d")
+        game.headers["White"] = "User" if user_is_white else "Team2-Agent"
+        game.headers["Black"] = "Team2-Agent" if user_is_white else "User"
+        if starting_fen:
+            game.headers["SetUp"] = "1"
+            game.headers["FEN"] = starting_fen
+
+        node = game
+        resigned = False
+
+        print("Starting Human vs Agent game.")
+        print(f"You are playing as {user_color.lower()}.")
+        print("Enter 'help' on your turn for commands.\n")
+
+        while not board.is_game_over(claim_draw=True):
+            print(board)
+            print(f"FEN: {board.fen()}")
+
+            if board.turn == user_side:
+                while True:
+                    user_input = input("Your move: ").strip()
+                    command = user_input.lower()
+
+                    if command == "help":
+                        print("Commands: help, board, moves, hint, resign, quit, exit")
+                        print("Move formats: e2e4 (UCI) or Nf3 / O-O / exd5 (SAN)")
+                        continue
+
+                    if command == "board":
+                        print(board)
+                        continue
+
+                    if command == "moves":
+                        legal = [mv.uci() for mv in board.legal_moves]
+                        print("Legal moves:", " ".join(legal))
+                        continue
+
+                    if command == "hint":
+                        hint = self.select_move(
+                            board.copy(stack=False),
+                            num_simulations=num_simulations,
+                            temperature=0.0,
+                            debug=False,
+                        )
+                        print(f"Agent hint: {str(hint)}")
+                        continue
+
+                    if command in {"resign", "quit", "exit"}:
+                        resigned = True
+                        result = "0-1" if user_is_white else "1-0"
+                        game.headers["Result"] = result
+                        game.headers["Termination"] = "User resigned"
+                        print("You resigned.")
+                        break
+
+                    move = self._parse_user_move(board, user_input)
+                    if move is None:
+                        print("Invalid move. Use UCI like e2e4 or SAN like Nf3.")
+                        continue
+
+                    board.push(move)
+                    node = node.add_variation(move)
+                    print(f"You played: {move.uci()}\n")
+                    break
+
+                if resigned:
+                    break
+
+            else:
+                engine_move = str(
+                    self.select_move(
+                        board.copy(stack=False),
+                        num_simulations=num_simulations,
+                        temperature=temperature,
+                        debug=debug,
+                    )
+                )
+                board.push_uci(engine_move)
+                node = node.add_variation(chess.Move.from_uci(engine_move))
+                print(f"Agent played: {engine_move}\n")
+
+        if not resigned:
+            game.headers["Result"] = board.result(claim_draw=True)
+            outcome = board.outcome(claim_draw=True)
+            if outcome is not None:
+                game.headers["Termination"] = outcome.termination.name
+
+        print(board)
+        print(f"Game over. Result: {game.headers.get('Result', '*')}")
+
+        if pgn_output_path:
+            out_dir = os.path.dirname(pgn_output_path)
+            if out_dir:
+                os.makedirs(out_dir, exist_ok=True)
+            with open(pgn_output_path, "a") as f:
+                print(game, file=f, end="\n\n")
+            print(f"Saved PGN to {pgn_output_path}")
+
+        return game
     
     def stockfish_only_training(self, iterations, num_games: int, train_to_test_ratio: float, num_simulations: int, temperature: int, workers: int):
         """
         train against stockfish
         """
+        self._require_stockfish()
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.stockfish.set_depth(10)
 
@@ -239,6 +408,7 @@ class Agent:
         """
         export a game between stockfish and the model. stockfish starts first.
         """
+        self._require_stockfish()
         self.stockfish.set_depth(15)
 
         cpu_start = time.process_time()
@@ -288,6 +458,7 @@ class Agent:
         Play 1 game where stockfish is white, and another with stockfish as black.
         Returns the games
         """
+        self._require_stockfish()
         board = chess.Board()
         all = [] # stores state, move, and winner for training
         device = next(self.policy_value_network.parameters()).device
