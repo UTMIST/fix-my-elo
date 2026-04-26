@@ -69,7 +69,7 @@ class SLPolicyValueNetwork(nn.Module):
         policy_flat = torch.flatten(conv_out, start_dim=1)  # exclude batch dimension
         policy_features = F.relu(self.fc_shared(policy_flat))
         policy_logits = self.fc_policy(policy_features)
-        policy_prob = F.softmax(policy_logits, dim=1)
+        # policy_prob = F.softmax(policy_logits, dim=1)
 
         # value head
         v = F.relu(self.value_bn(self.value_conv(conv_out)))
@@ -78,4 +78,4 @@ class SLPolicyValueNetwork(nn.Module):
         value = torch.tanh(self.value_fc2(v))
 
 
-        return policy_prob, value
+        return policy_logits, value

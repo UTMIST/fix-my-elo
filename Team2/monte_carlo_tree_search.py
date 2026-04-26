@@ -10,7 +10,7 @@ class Monte_Carlo_Tree_Search:
     Monte Carlo Tree Search implementation using policy and value networks.
     '''
 
-    def __init__(self, policy_value_network, c_puct, alpha, epsilon, visited, policy_batch_size=16):
+    def __init__(self, policy_value_network, c_puct, alpha, epsilon, visited, mcts_temperature=1.0, policy_batch_size=16, fpu=2.0):
         '''
         policy_network: neural network that predicts move probabilities
         value_network: neural network that predicts state value
@@ -18,6 +18,7 @@ class Monte_Carlo_Tree_Search:
         expected_reward: dictionary mapping game states to expected rewards for each action
         frequency_action: dictionary mapping game states to visit counts for each action
         visited: set of visited game states
+        fpu: first play urgency bonus for unvisited moves
         '''
         policy_value_network.eval()
         self.policy_value_network = policy_value_network
@@ -25,8 +26,10 @@ class Monte_Carlo_Tree_Search:
         self.c_puct = c_puct
         self.alpha = alpha
         self.epsilon = epsilon
-        self.expected_reward = defaultdict(lambda: defaultdict(float))
-        self.frequency_action = defaultdict(lambda: defaultdict(int))
+        self.fpu = fpu
+        self.mcts_temperature = mcts_temperature
+        self.expected_reward = defaultdict(lambda: defaultdict(float)) #all initialize dto 0
+        self.frequency_action = defaultdict(lambda: defaultdict(int)) # all initialized to 0
         self.total_visits = defaultdict(int)
         self.visited = visited
         self.policy_cache = {}  
@@ -61,21 +64,27 @@ class Monte_Carlo_Tree_Search:
         if p is None:
             return None
 
-        move_labels = np.fromiter((self._get_move_label(move) for move in legal_moves), dtype=np.int64, count=len(legal_moves))
-        priors = p[0, move_labels].detach().numpy().astype(np.float32, copy=False)
+        move_labels = np.fromiter((self._get_move_label(move) for move in legal_moves), dtype=np.int64, count=len(legal_moves)) #mask out illegal moves
+        priors = p[0, move_labels].detach().numpy().astype(np.float32, copy=False) / self.mcts_temperature #apply temperature
 
         if is_root:
             dirichlet_noise = self.rng.dirichlet([self.alpha] * len(legal_moves)).astype(np.float32, copy=False)
             priors = (1 - self.epsilon) * priors + self.epsilon * dirichlet_noise
+        
+        # priors = np.exp(priors) / np.sum(np.exp(priors))
 
         freq_board = self.frequency_action[board]
         board_ev = self.expected_reward[board]
         visits = np.fromiter((freq_board[move] for move in legal_moves), dtype=np.float32, count=len(legal_moves))
         q_values = np.fromiter((board_ev[move] for move in legal_moves), dtype=np.float32, count=len(legal_moves))
 
+        # FPU
+        q_values += np.where(visits == 0, self.fpu, 0) # if visits=0 add score of 1 to the score
+
         # vectorized UCT calculation
         sqrt_total_visits = math.sqrt(float(self.total_visits[board]))
         uct_scores = q_values + self.c_puct * priors * sqrt_total_visits / (1.0 + visits)
+
         return legal_moves[int(np.argmax(uct_scores))]
 
 

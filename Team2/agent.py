@@ -43,14 +43,14 @@ class Agent:
         self.stockfish = Stockfish(path=r"stockfish/stockfish-ubuntu-x86-64-avx2")
 
 
-    def select_move(self, game_state, num_simulations, temperature=0.0, debug=False):
+    def select_move(self, game_state, num_simulations, temperature=0.0, mcts_temperature=2.0, debug=False):
         '''
         Selects the best move based on the policy network's predictions.
         '''
         device = next(self.policy_value_network.parameters()).device
         self.policy_value_network.eval()
         board = game_state.fen()
-        mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set()) # generate new mcts object to save memory
+        mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set(), mcts_temperature=mcts_temperature) # generate new mcts object to save memory
         mcts.run_simulations(game_state, num_simulations)
 
         # apply temperature with numerical stability and NaN-safety
@@ -124,11 +124,12 @@ class Agent:
         # prefer SmoothL1 (Huber) for value head
         value_criterion = nn.SmoothL1Loss()
         # value_criterion = nn.MSELoss()
-        optimizer = optim.AdamW(self.policy_value_network.parameters(), lr=1e-3, weight_decay=1e-4)
+        optimizer = optim.AdamW(self.policy_value_network.parameters(), lr=1e-3, weight_decay=1e-4) #this lr is overwritten
         # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
         
         # try cyclic lr for faster learning and possible convergence
-        scheduler = CyclicLR(optimizer=optimizer, base_lr=1e-5, max_lr=1e-3, step_size_up=2000)
+        scheduler = CyclicLR(optimizer=optimizer, base_lr=1e-3, max_lr=1e-1, step_size_up=1000) 
+        scheduler.last_epoch = 1000 #start at max lr
 
         start_time = time.time()
         # keep a rolling buffer of examples from recent epochs (last N epochs)
