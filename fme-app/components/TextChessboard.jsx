@@ -1,20 +1,15 @@
 "use client";
 
 import { Chess } from "chess.js";
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Chessboard } from "react-chessboard";
 
 export default function ClickOrDragToMove() {
-  // create a chess game using a ref so it persists across renders
-  const chessGameRef = useRef(new Chess());
-  const chessGame = chessGameRef.current;
-
-  // state to trigger re-renders
-  const [chessPosition, setChessPosition] = useState(chessGame.fen());
+  const [chessGame] = useState(() => new Chess());
+  const [chessPosition, setChessPosition] = useState(() => chessGame.fen());
   const [moveFrom, setMoveFrom] = useState("");
   const [optionSquares, setOptionSquares] = useState({});
 
-  // make a random "CPU" move
   function makeRandomMove() {
     const possibleMoves = chessGame.moves();
 
@@ -27,7 +22,6 @@ export default function ClickOrDragToMove() {
     setChessPosition(chessGame.fen());
   }
 
-  // get move options for a square
   function getMoveOptions(square) {
     const moves = chessGame.moves({
       square,

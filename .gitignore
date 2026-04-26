@@ -16,3 +16,7 @@ game_examples.pkl
 
 /Team2/*.pth
 /tictactoe
+Team2/model_files/sl_policy_value_bootstrap.pth
+Team2/model_files/sl_policy_value_tool_test.pth
+Team2/model_files/*bootstrap*.pth
+Team2/model_files/*tool_test*.pth
