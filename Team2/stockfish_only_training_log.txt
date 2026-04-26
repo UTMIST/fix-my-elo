@@ -44,3 +44,14 @@ elapsed: 64276.22s, epoch: 43, test loss: 1.382534, lr: 1.0684263543225825e-05
 elapsed: 65919.44s, epoch: 44, test loss: 1.332094, lr: 1.0659479812602513e-05
 elapsed: 67587.51s, epoch: 45, test loss: 1.325110, lr: 1.065593914972851e-05
 elapsed: 69286.48s, epoch: 46, test loss: 1.330655, lr: 1.0658771316229831e-05
+elapsed: 71033.65s, epoch: 47, test loss: 1.296712, lr: 1.0641777407727204e-05
+elapsed: 72736.99s, epoch: 48, test loss: 1.304515, lr: 1.0645790098351426e-05
+elapsed: 76074.94s, epoch: 49, test loss: 1.321111, lr: 1.065405103872763e-05
+elapsed: 77692.40s, epoch: 50, test loss: 1.323293, lr: 1.065499509422807e-05
+elapsed: 79508.43s, epoch: 51, test loss: 1.290123, lr: 1.0638708772603422e-05
+elapsed: 81192.62s, epoch: 52, test loss: 1.307177, lr: 1.0646969712979626e-05
+elapsed: 82825.07s, epoch: 53, test loss: 1.286188, lr: 1.063658419298008e-05
+elapsed: 84490.11s, epoch: 54, test loss: 1.279526, lr: 1.063327999872854e-05
+elapsed: 86081.35s, epoch: 55, test loss: 1.303752, lr: 1.0645318070601206e-05
+elapsed: 87800.67s, epoch: 56, test loss: 1.280078, lr: 1.063375202647876e-05
+elapsed: 89611.79s, epoch: 57, test loss: 1.245456, lr: 1.0616521649353672e-05

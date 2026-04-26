@@ -67,6 +67,9 @@ class Monte_Carlo_Tree_Search:
         if is_root:
             dirichlet_noise = self.rng.dirichlet([self.alpha] * len(legal_moves)).astype(np.float32, copy=False)
             priors = (1 - self.epsilon) * priors + self.epsilon * dirichlet_noise
+        
+        # apply softmax
+        priors = np.exp2(priors)/sum(np.exp2(priors))
 
         freq_board = self.frequency_action[board]
         board_ev = self.expected_reward[board]

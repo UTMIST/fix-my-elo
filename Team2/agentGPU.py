@@ -16,39 +16,15 @@ if __name__ == "__main__":
     model1.load_state_dict(torch.load("SL_trained_stockfish_trained.pth", map_location=torch.device("cuda"))["model"])
 
     # only train the first model
-    agent = Agent(policy_value_network=model1, c_puct=0.25, dirichlet_alpha=0.3, dirichlet_epsilon=0.25)
+    agent = Agent(policy_value_network=model1, c_puct=0.15, dirichlet_alpha=0.3, dirichlet_epsilon=0.3)
     # agent.training_self_play(num_training_iterations=1, num_games=4, train_to_test_ratio=0.8, num_simulations=10, resign_moves=20, resign_threshold=0.95, num_testing_games=20, improvement_threshold=30, temperature=0.1)
 
     # example games
-    agent.agent_vs_stockfish(num_games=4, num_simulations=1000, path_to_output="pgn_files/examples.pgn", epoch=55)
-
-    # progress too slow? not enough pitting games?
-    # examples = agent.stockfish_self_play(2, 1.0)
-    # print(examples[0])
+    # agent.agent_vs_stockfish(num_games=2, num_simulations=3200, path_to_output="pgn_files/examples.pgn", epoch=55)
 
     # train fresh network with stockfish
-    # agent.stockfish_only_training(iterations=50, num_games=70, train_to_test_ratio=0.8, num_simulations=100, temperature=0.5, workers=14)
-    
-    board = chess.Board()
-    move = agent.select_move(board, num_simulations=1000, temperature=0.0)
-    print(f"Selected move: {move}")
-    move = agent.select_move(board, num_simulations=1000, temperature=0.0)
-    print(f"Selected move: {move}")
-    move = agent.select_move(board, num_simulations=1000, temperature=0.0)
-    print(f"Selected move: {move}")
+    agent.stockfish_only_training(iterations=100, num_games=100, train_to_test_ratio=0.8, num_simulations=100, temperature=0.5, workers=20)
 
-    # # benchmark
-    # import time
-    # start = time.process_time()
-    # examples = []
-    # for _ in range(10):
-    #     examples = agent.stockfish_self_play(10)
-    # end = time.process_time()
-    # print(examples[0], end-start)
-
-
-    # torch.save(agent.policy_value_network.state_dict(), "lab_self_play.pth")
-    
     
     # test model performance
     # pit_result = pit(model2, model1, num_games=10, num_simulations=1, c_puct=1.0, dirichlet_alpha=0.3, dirichlet_epsilon=0.25, temperature=0.1)

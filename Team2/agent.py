@@ -71,7 +71,7 @@ class Agent:
             if counts.size == 0:
                 raise RuntimeError(f"MCTS returned no visit counts for board: {board}")
 
-        # # deterministic selection when temperature == 0
+        # deterministic selection when temperature == 0
         if temperature == 0:
             idx = int(np.argmax(counts))
             return moves[idx]
@@ -118,7 +118,7 @@ class Agent:
 
         """
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.stockfish.set_depth(16)
+        self.stockfish.set_depth(30)
 
         policy_criterion = nn.CrossEntropyLoss()
         # prefer SmoothL1 (Huber) for value head
@@ -133,7 +133,7 @@ class Agent:
         start_time = time.time()
         # keep a rolling buffer of examples from recent epochs (last N epochs)
         recent_epoch_examples = []
-        max_epoch_buffer = 30
+        max_epoch_buffer = 60 #30 epochs is around 5gb of data
 
         for epoch in range(iterations):
             all_examples = []
