@@ -210,8 +210,9 @@ class Agent:
                     loss = policy_loss + value_loss
                     test_loss += loss
 
+            # why is valid loss no longer accepted as parameter for step?
             valid_loss = test_loss / len(test_dataloader)
-            scheduler.step(valid_loss)
+            scheduler.step()
 
             print('epoch: {}, test loss: {:.6f}, lr: {}'.format(
                 epoch + 1,
