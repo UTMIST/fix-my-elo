@@ -43,14 +43,24 @@ if [ -n "${TEAM2_MODEL_URL:-}" ]; then
 fi
 
 # Ensure Python dependencies are present in the venv at runtime (fallback)
-if [ -x "/venv/bin/python" ]; then
-  echo "Checking python-chess availability in venv..."
-  if ! /venv/bin/python -c "import importlib; sys_spec = importlib.util.find_spec('chess'); exit(0 if sys_spec is not None else 1)" 2>/dev/null; then
+PYTHON_BIN="${TEAM2_PYTHON:-/venv/bin/python}"
+if [ -x "$PYTHON_BIN" ]; then
+  echo "Using Python executable: $($PYTHON_BIN -c 'import sys; print(sys.executable)')"
+  echo "Checking python-chess availability using $PYTHON_BIN..."
+  if ! $PYTHON_BIN - <<'PY'
+import sys
+try:
+    import chess
+except Exception:
+    sys.exit(1)
+sys.exit(0)
+PY
+  then
     echo "python-chess not found in venv; installing Team2 requirements into venv..."
     if [ -f "/app/Team2/requirements.txt" ]; then
-      /venv/bin/pip install --no-cache-dir -r /app/Team2/requirements.txt || {
+      "$PYTHON_BIN" -m pip install --no-cache-dir -r /app/Team2/requirements.txt || {
         echo "ERROR: Runtime pip install failed";
-        /venv/bin/pip --version || true;
+        "$PYTHON_BIN" -m pip --version || true;
       }
     else
       echo "WARNING: /app/Team2/requirements.txt not found; cannot install runtime dependencies"
@@ -58,6 +68,12 @@ if [ -x "/venv/bin/python" ]; then
   else
     echo "python-chess available in venv"
   fi
+
+  # Print a quick package summary for debugging
+  echo "--- pip list (top) ---"
+  "$PYTHON_BIN" -m pip show chess 2>/dev/null || true
+  "$PYTHON_BIN" -m pip show torch 2>/dev/null || true
+  echo "----------------------"
 fi
 
 exec "$@"
