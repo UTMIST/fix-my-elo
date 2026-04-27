@@ -11,7 +11,7 @@ services:
       - key: PORT
         value: 10000
       - key: TEAM2_PYTHON
-        value: /usr/bin/python3
+        value: /venv/bin/python
       - key: TEAM2_MODEL_PATH
         value: /app/Team2/model_files/model.pth
       - key: TEAM2_MODEL_URL
