@@ -43,7 +43,14 @@ if [ -n "${TEAM2_MODEL_URL:-}" ]; then
 fi
 
 # Ensure Python dependencies are present in the venv at runtime (fallback)
-PYTHON_BIN="${TEAM2_PYTHON:-/venv/bin/python}"
+PYTHON_BIN="${TEAM2_PYTHON:-}"
+if [ -x "/venv/bin/python" ]; then
+  # Prefer the venv python even if TEAM2_PYTHON is set to system python.
+  PYTHON_BIN="/venv/bin/python"
+elif [ -z "$PYTHON_BIN" ]; then
+  PYTHON_BIN="/usr/bin/python3"
+fi
+
 if [ -x "$PYTHON_BIN" ]; then
   echo "Using Python executable: $($PYTHON_BIN -c 'import sys; print(sys.executable)')"
   echo "Checking python-chess availability using $PYTHON_BIN..."

@@ -89,6 +89,10 @@ export async function POST(req: Request) {
       // continue to attempt running the engine
     }
 
+    const timeoutMs = Number.isFinite(Number(process.env.AGENT_MOVE_TIMEOUT_MS))
+      ? Math.max(1000, Number(process.env.AGENT_MOVE_TIMEOUT_MS))
+      : 15000;
+
     const result = await runPython(
       pythonExec,
       [
@@ -103,7 +107,18 @@ export async function POST(req: Request) {
         String(temperature),
       ],
       team2Dir,
+      timeoutMs,
     );
+
+    if (result.timedOut) {
+      return NextResponse.json(
+        {
+          error: "Engine move timed out",
+          details: `Engine exceeded ${timeoutMs}ms`,
+        },
+        { status: 504 },
+      );
+    }
 
     if (result.exitCode !== 0) {
       // Provide detailed error information collected from the engine process
@@ -130,16 +145,26 @@ export async function POST(req: Request) {
   }
 }
 
-function runPython(command: string, args: string[], cwd: string) {
+function runPython(command: string, args: string[], cwd: string, timeoutMs?: number) {
   return new Promise<{
     exitCode: number | null;
     stdout: string;
     stderr: string;
     parsed: Record<string, unknown> | null;
+    timedOut: boolean;
   }>((resolve) => {
     const child = spawn(command, args, { cwd });
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    if (timeoutMs && timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGKILL");
+      }, timeoutMs);
+    }
 
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
@@ -150,6 +175,7 @@ function runPython(command: string, args: string[], cwd: string) {
     });
 
     child.on("close", (code) => {
+      if (timeoutId) clearTimeout(timeoutId);
       let parsed: Record<string, unknown> | null = null;
       const trimmed = stdout.trim();
 
@@ -166,6 +192,7 @@ function runPython(command: string, args: string[], cwd: string) {
         stdout,
         stderr,
         parsed,
+        timedOut,
       });
     });
   });
