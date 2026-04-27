@@ -14,3 +14,5 @@ services:
         value: /usr/bin/python3
       - key: TEAM2_MODEL_PATH
         value: /app/Team2/model_files/model.pth
+      - key: TEAM2_MODEL_URL
+        value: https://huggingface.co/Khushi-Malik/fix-my-elo/resolve/main/SL_trained_stockfish_trained.pth
