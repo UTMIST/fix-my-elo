@@ -83,4 +83,17 @@ PY
   echo "----------------------"
 fi
 
+# Start the persistent engine server (loads model once)
+ENGINE_ENABLE="${TEAM2_ENGINE_ENABLE:-1}"
+ENGINE_PORT="${TEAM2_ENGINE_PORT:-8001}"
+ENGINE_HOST="${TEAM2_ENGINE_HOST:-127.0.0.1}"
+if [ "$ENGINE_ENABLE" != "0" ]; then
+  if [ -x "$PYTHON_BIN" ]; then
+    echo "Starting Team2 engine server on ${ENGINE_HOST}:${ENGINE_PORT}"
+    TEAM2_ENGINE_HOST="$ENGINE_HOST" TEAM2_ENGINE_PORT="$ENGINE_PORT" "$PYTHON_BIN" /app/Team2/engine_server.py &
+  else
+    echo "WARNING: Python executable not found; engine server will not start"
+  fi
+fi
+
 exec "$@"

@@ -93,6 +93,25 @@ export async function POST(req: Request) {
       ? Math.max(1000, Number(process.env.AGENT_MOVE_TIMEOUT_MS))
       : 15000;
 
+    const engineUrl = process.env.TEAM2_ENGINE_URL;
+    if (engineUrl) {
+      const engineResponse = await callEngineServer(
+        engineUrl,
+        {
+          fen,
+          numSimulations,
+          temperature,
+        },
+        timeoutMs,
+      );
+
+      if (!engineResponse.ok) {
+        return NextResponse.json(engineResponse.body, { status: engineResponse.status });
+      }
+
+      return NextResponse.json(engineResponse.body);
+    }
+
     const result = await runPython(
       pythonExec,
       [
@@ -196,4 +215,39 @@ function runPython(command: string, args: string[], cwd: string, timeoutMs?: num
       });
     });
   });
+}
+
+async function callEngineServer(
+  url: string,
+  payload: { fen: string; numSimulations: number; temperature: number },
+  timeoutMs: number,
+): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }>
+{
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    const raw = await response.text();
+    const body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+
+    return { ok: response.ok, status: response.status, body };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 504,
+      body: {
+        error: "Engine server request failed",
+        details: String(error),
+      },
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
