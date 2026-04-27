@@ -64,7 +64,8 @@ export async function POST(req: Request) {
 
     const preflight = await runPython(pythonExec, [
       "-c",
-      "import importlib,sys,json; print(json.dumps({'exe': sys.executable, 'has_chess': importlib.util.find_spec('chess') is not None}))",
+      // Avoid importlib.util (some Python envs can shadow importlib); try importing chess directly
+      "import sys,json\ntry:\n import chess\n print(json.dumps({'exe': sys.executable, 'has_chess': True}))\nexcept Exception as e:\n print(json.dumps({'exe': sys.executable, 'has_chess': False, 'error': str(e)}))\n",
     ], team2Dir);
 
     console.error(`[AGENT-MOVE] Preflight stdout: ${preflight.stdout}`);
