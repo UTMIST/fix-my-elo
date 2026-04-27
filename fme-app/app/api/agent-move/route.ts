@@ -59,6 +59,30 @@ export async function POST(req: Request) {
       );
     }
 
+    // Log which Python executable we'll use and perform a preflight check
+    console.error(`[AGENT-MOVE] Using python executable: ${pythonExec}`);
+
+    const preflight = await runPython(pythonExec, [
+      "-c",
+      "import importlib,sys,json; print(json.dumps({'exe': sys.executable, 'has_chess': importlib.util.find_spec('chess') is not None}))",
+    ], team2Dir);
+
+    console.error(`[AGENT-MOVE] Preflight stdout: ${preflight.stdout}`);
+    console.error(`[AGENT-MOVE] Preflight stderr: ${preflight.stderr}`);
+
+    if (preflight.exitCode !== 0) {
+      return NextResponse.json({ error: 'Python preflight failed', details: preflight.stderr || preflight.stdout }, { status: 500 });
+    }
+
+    try {
+      const parsedPre = preflight.parsed as Record<string, unknown> | null;
+      if (!parsedPre || parsedPre['has_chess'] !== true) {
+        return NextResponse.json({ error: 'Python environment missing python-chess', details: preflight.stdout || preflight.stderr }, { status: 500 });
+      }
+    } catch {
+      // continue to attempt running the engine
+    }
+
     const result = await runPython(
       pythonExec,
       [
@@ -76,6 +100,11 @@ export async function POST(req: Request) {
     );
 
     if (result.exitCode !== 0) {
+      // Provide detailed error information collected from the engine process
+      console.error(`[AGENT-MOVE] Engine failed. exit=${result.exitCode}`);
+      console.error(`[AGENT-MOVE] Engine stdout: ${result.stdout}`);
+      console.error(`[AGENT-MOVE] Engine stderr: ${result.stderr}`);
+
       return NextResponse.json(
         {
           error: "Engine process failed",
