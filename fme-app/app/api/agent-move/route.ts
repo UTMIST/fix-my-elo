@@ -39,7 +39,12 @@ export async function POST(req: Request) {
     const repoRoot = path.resolve(process.cwd(), "..");
     const team2Dir = path.join(repoRoot, "Team2");
     const scriptPath = path.join(team2Dir, "engine_move_cli.py");
-    const pythonExec = process.env.TEAM2_PYTHON ?? "python3";
+    const defaultVenvPython = "/venv/bin/python";
+    const pythonExec = process.env.TEAM2_PYTHON
+      ? process.env.TEAM2_PYTHON
+      : fs.existsSync(defaultVenvPython)
+        ? defaultVenvPython
+        : "python3";
 
     const candidatePaths = [
       process.env.TEAM2_MODEL_PATH,
