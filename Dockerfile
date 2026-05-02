@@ -10,9 +10,9 @@ RUN apt-get update \
 RUN python3 -m venv /venv
 ENV PATH="/venv/bin:$PATH"
 
-# Install Python dependencies inside venv
+# Install Python dependencies inside venv (explicitly use venv pip)
 COPY Team2/requirements.txt /tmp/team2-requirements.txt
-RUN pip install --no-cache-dir -r /tmp/team2-requirements.txt
+RUN /venv/bin/pip install --no-cache-dir -r /tmp/team2-requirements.txt
 
 # Node setup
 COPY fme-app/package*.json /app/fme-app/

@@ -11,12 +11,40 @@ from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
 
 
 def load_agent(model_path: str, c_puct: float, dirichlet_alpha: float, dirichlet_epsilon: float) -> Agent:
+    """Load a checkpoint and create an Agent instance."""
+    import traceback
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = SLPolicyValueNetwork().to(device)
 
-    checkpoint = torch.load(model_path, map_location=device)
-    state_dict = checkpoint["model"] if isinstance(checkpoint, dict) and "model" in checkpoint else checkpoint
-    model.load_state_dict(state_dict)
+    try:
+        # Validate file exists and is not empty
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+        file_size = os.path.getsize(model_path)
+        if file_size < 1000:
+            raise ValueError(f"Model file too small ({file_size} bytes). May not be a valid checkpoint.")
+        
+        # Load checkpoint
+        checkpoint = torch.load(model_path, map_location=device)
+        
+        # Extract state_dict from checkpoint
+        if isinstance(checkpoint, dict):
+            if "model" in checkpoint:
+                state_dict = checkpoint["model"]
+            elif "state_dict" in checkpoint:
+                state_dict = checkpoint["state_dict"]
+            else:
+                # Assume the entire dict is the state_dict
+                state_dict = checkpoint
+        else:
+            state_dict = checkpoint
+        
+        # Load model weights
+        model.load_state_dict(state_dict, strict=False)
+    except Exception as e:
+        raise RuntimeError(f"Failed to load checkpoint from {model_path}: {e}") from e
+    
     model.eval()
 
     return Agent(
@@ -57,6 +85,8 @@ def main() -> int:
         return 1
 
     try:
+        import traceback as tb
+        
         agent = load_agent(
             model_path=model_path,
             c_puct=args.c_puct,
@@ -84,7 +114,9 @@ def main() -> int:
         }))
         return 0
     except Exception as e:
-        print(json.dumps({"error": f"Engine failure: {e}"}))
+        import traceback as tb
+        error_trace = tb.format_exc()
+        print(json.dumps({"error": f"Engine failure: {e}", "trace": error_trace}))
         return 1
 
 

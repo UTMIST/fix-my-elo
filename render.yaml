@@ -11,6 +11,14 @@ services:
       - key: PORT
         value: 10000
       - key: TEAM2_PYTHON
-        value: /usr/bin/python3
+        value: /venv/bin/python
+      - key: TEAM2_MODEL_URL
+        value: https://huggingface.co/Khushi-Malik/fix-my-elo/resolve/main/SL_trained_stockfish_trained.pth
       - key: TEAM2_MODEL_PATH
         value: /app/Team2/model_files/model.pth
+      - key: TEAM2_ENGINE_URL
+        value: http://127.0.0.1:8001/move
+      - key: TEAM2_ENGINE_HOST
+        value: 127.0.0.1
+      - key: TEAM2_ENGINE_PORT
+        value: 8001

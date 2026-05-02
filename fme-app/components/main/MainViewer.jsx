@@ -167,6 +167,9 @@ export default function MainViewer() {
     setEngineError('');
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+
       const response = await fetch('/api/agent-move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -175,9 +178,12 @@ export default function MainViewer() {
           numSimulations: engineNumSimulations,
           temperature: 0,
         }),
+        signal: controller.signal,
       });
 
-      const payload = await response.json();
+      clearTimeout(timeoutId);
+      const raw = await response.text();
+      const payload = raw ? JSON.parse(raw) : null;
       if (!response.ok) {
         throw new Error(payload?.error || payload?.details?.error || 'Engine request failed');
       }
@@ -195,6 +201,10 @@ export default function MainViewer() {
       updateEngineResultHeader(updatedMoves);
     } catch (err) {
       if (engineRequestIdRef.current !== requestId) return;
+      if (err?.name === 'AbortError') {
+        setEngineError('Engine request timed out');
+        return;
+      }
       setEngineError(String(err));
     } finally {
       if (engineRequestIdRef.current === requestId) {
