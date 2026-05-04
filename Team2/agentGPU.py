@@ -23,7 +23,7 @@ if __name__ == "__main__":
     # agent.agent_vs_stockfish(num_games=2, num_simulations=3200, path_to_output="pgn_files/examples.pgn", epoch=55)
 
     # train fresh network with stockfish
-    agent.stockfish_only_training(iterations=20, num_games=500, train_to_test_ratio=0.8, num_simulations=100, temperature=0.8, workers=22)
+    agent.stockfish_only_training(iterations=20, num_games=100, train_to_test_ratio=0.8, num_simulations=100, temperature=0.8, workers=22)
 
     
     # test model performance

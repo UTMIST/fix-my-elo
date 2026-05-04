@@ -307,7 +307,7 @@ class Agent:
         start_time = time.time()
         # keep a rolling buffer of examples from recent epochs (last N epochs)
         recent_epoch_examples = []
-        max_epoch_buffer = 10 #30 epochs is around 5gb of data with 100 games per epoch
+        max_epoch_buffer = 50 #30 epochs is around 5gb of data with 100 games per epoch
 
         for epoch in range(iterations):
             all_examples = []
