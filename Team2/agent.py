@@ -297,12 +297,12 @@ class Agent:
         # prefer SmoothL1 (Huber) for value head
         value_criterion = nn.SmoothL1Loss()
         # value_criterion = nn.MSELoss()
-        optimizer = optim.AdamW(self.policy_value_network.parameters(), lr=1e-4, weight_decay=1e-4) #this lr is overwritten
+        optimizer = optim.AdamW(self.policy_value_network.parameters(), lr=1e-3, weight_decay=1e-4) #this lr is overwritten
         # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
         
         # try cyclic lr for faster learning and possible convergence
-        scheduler = CyclicLR(optimizer=optimizer, base_lr=1e-5, max_lr=1e-3, step_size_up=1000) 
-        scheduler.last_epoch = 1000 #start at max lr
+        # scheduler = CyclicLR(optimizer=optimizer, base_lr=1e-5, max_lr=1e-3, step_size_up=500)
+        # scheduler.last_epoch = 1000 #start at max lr
 
         start_time = time.time()
         # keep a rolling buffer of examples from recent epochs (last N epochs)
@@ -386,7 +386,7 @@ class Agent:
 
             # why is valid loss no longer accepted as parameter for step?
             valid_loss = test_loss / len(test_dataloader)
-            scheduler.step()
+            # scheduler.step()
 
             print('epoch: {}, test loss: {:.6f}, lr: {}'.format(
                 epoch + 1,
@@ -394,18 +394,18 @@ class Agent:
                 optimizer.param_groups[0]['lr']
                 ))
             
-            with open("stockfish_only_training_log.txt", "a") as log_file:
+            with open("LGB70k_log.txt", "a") as log_file:
                 log_file.write(f"elapsed: {time.time() - start_time:.2f}s, epoch: {epoch+1}, test loss: {valid_loss:.6f}, lr: {optimizer.param_groups[0]['lr']}\n")
 
             # Checkpoint
             torch.save({
                 "model": self.policy_value_network.state_dict(),
                 "optimizer": optimizer.state_dict(),
-            }, "stockfish_trained.pth")
-            print("[Stockfish-Only] checkpoint saved: stockfish_trained.pth")
+            }, "LGB70k_stockfish.pth")
+            print("[Stockfish-Only] checkpoint saved: LGB70k_stockfish_trained.pth")
 
             #Generate examplar game every epoch
-            self.agent_vs_stockfish(2, 1000, "pgn_files/stockfish_only_examplar_games.pgn", epoch)
+            self.agent_vs_stockfish(2, 1000, "pgn_files/LGB70k_examplar_games.pgn", epoch)
 
 
     def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0):
@@ -498,9 +498,14 @@ class Agent:
                 board_tensor = fen_to_board_tensor(board_fen).unsqueeze(0).to(device)
 
                 if stockfish_turn == 1:
-                    self.stockfish.set_fen_position(board.fen())
-                    move = self.stockfish.get_best_move()
-                    board.push_uci(move)
+                    # until move 5, play random moves to create variation
+                    if board.fullmove_number < 5:
+                        move = random.choice([move.uci() for move in board.legal_moves])
+                        board.push_uci(move)
+                    else:
+                        self.stockfish.set_fen_position(board.fen())
+                        move = self.stockfish.get_best_move()
+                        board.push_uci(move)
                 else:
                     move = self.select_move(game_state=board, num_simulations=num_simulations, temperature = temperature).item()
                     board.push_uci(move)
