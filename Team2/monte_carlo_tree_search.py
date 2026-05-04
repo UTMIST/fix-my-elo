@@ -10,7 +10,7 @@ class Monte_Carlo_Tree_Search:
     Monte Carlo Tree Search implementation using policy and value networks.
     '''
 
-    def __init__(self, policy_value_network, c_puct, alpha, epsilon, visited, mcts_temperature=1.0, policy_batch_size=16, fpu=2.0):
+    def __init__(self, policy_value_network, c_puct, alpha, epsilon, visited, mcts_policy_temperature=1.0, mcts_temperature=1.0, policy_batch_size=16, fpu=4.0):
         '''
         policy_network: neural network that predicts move probabilities
         value_network: neural network that predicts state value
@@ -27,6 +27,7 @@ class Monte_Carlo_Tree_Search:
         self.alpha = alpha
         self.epsilon = epsilon
         self.fpu = fpu
+        self.mcts_policy_temperature = mcts_policy_temperature
         self.mcts_temperature = mcts_temperature
         self.expected_reward = defaultdict(lambda: defaultdict(float)) #all initialize dto 0
         self.frequency_action = defaultdict(lambda: defaultdict(int)) # all initialized to 0
@@ -65,7 +66,7 @@ class Monte_Carlo_Tree_Search:
             return None
 
         move_labels = np.fromiter((self._get_move_label(move) for move in legal_moves), dtype=np.int64, count=len(legal_moves)) #mask out illegal moves
-        priors = p[0, move_labels].detach().numpy().astype(np.float32, copy=False) / self.mcts_temperature #apply temperature
+        priors = p[0, move_labels].detach().numpy().astype(np.float32, copy=False) / self.mcts_policy_temperature #apply temperature to policy
 
         if is_root:
             dirichlet_noise = self.rng.dirichlet([self.alpha] * len(legal_moves)).astype(np.float32, copy=False)
@@ -85,7 +86,16 @@ class Monte_Carlo_Tree_Search:
         sqrt_total_visits = math.sqrt(float(self.total_visits[board]))
         uct_scores = q_values + self.c_puct * priors * sqrt_total_visits / (1.0 + visits)
 
-        return legal_moves[int(np.argmax(uct_scores))]
+        uct_scores = uct_scores / self.mcts_temperature
+
+        # Numerically stable softmax: subtract max BEFORE exponential
+        uct_scores_stable = uct_scores - np.max(uct_scores)
+        exp_uct = np.exp(uct_scores_stable)
+        probs = exp_uct / np.sum(exp_uct)
+
+        # return legal_moves[int(np.argmax(uct_scores))]
+        generator = np.random.default_rng()
+        return generator.choice(legal_moves, p=probs)
 
 
     def _terminal_value(self, game_state):

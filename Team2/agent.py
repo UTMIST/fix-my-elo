@@ -64,33 +64,41 @@ class Agent:
             )
 
 
-    def select_move(self, game_state, num_simulations, temperature=0.0, mcts_temperature=2.0, debug=False):
+    def select_move(self, game_state, num_simulations, temperature=0.0, mcts_policy_temperature=1.0, mcts_temperature=1.0, debug=False):
         '''
         Selects the best move based on the policy network's predictions.
         '''
         device = next(self.policy_value_network.parameters()).device
         self.policy_value_network.eval()
         board = game_state.fen()
-        mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set(), mcts_temperature=mcts_temperature) # generate new mcts object to save memory
+        mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set(), mcts_policy_temperature=mcts_policy_temperature, mcts_temperature=mcts_temperature) # generate new mcts object to save memory
         mcts.run_simulations(game_state, num_simulations)
 
-        # apply temperature with numerical stability and NaN-safety
+        legal_moves = [move.uci() for move in game_state.legal_moves]
         moves = list(mcts.frequency_action[board].keys())
         counts = np.array(list(mcts.frequency_action[board].values()), dtype=np.float64)
+        evals = np.fromiter((mcts.expected_reward[game_state.fen()][move] for move in legal_moves), dtype=np.float32, count=len(legal_moves))
 
+        move_labels = np.fromiter((mcts._get_move_label(move) for move in legal_moves), dtype=np.int64, count=len(legal_moves))
+        p = mcts.policy_cache.get(board)
+        priors = p[0, move_labels].detach().numpy().astype(np.float32, copy=False)
 
         # debuggning (show move visits + counts)
         if debug:
-            combined = zip(moves, counts)
+            combined = zip(moves, counts, evals, priors)
             combined = sorted(combined, key=lambda x: x[1].item(), reverse=True)
+            checked = 0
             for i, item in enumerate(combined):
-                if i == 5:
-                    break
-                print(f"move: {item[0]}, count: {item[1].item()}")
+                # if i == 5:
+                #     break
+                print(f"move: {item[0]}, count: {item[1].item():.5f}, ev: {item[2].item():.5f}, policy logit: {item[3].item():.5f}")
+                if item[1].item() > 0:
+                    checked += 1
             print("final eval: ", mcts.expected_reward[board][combined[0][0]])
 
             if counts.size == 0:
                 raise RuntimeError(f"MCTS returned no visit counts for board: {board}")
+            print(f"tested {checked} moves out of ",len(list(game_state.legal_moves)))
 
         # deterministic selection when temperature == 0
         if temperature == 0:
@@ -115,10 +123,6 @@ class Agent:
                 probs = counts / counts.sum()
             else:
                 probs = exp_scaled / s
-
-        # final sanity: ensure probabilities are finite and sum to 1
-        if not np.all(np.isfinite(probs)) or probs.sum() <= 0:
-            probs = counts / counts.sum()
 
         probs = probs / probs.sum()
 
@@ -297,13 +301,13 @@ class Agent:
         # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
         
         # try cyclic lr for faster learning and possible convergence
-        scheduler = CyclicLR(optimizer=optimizer, base_lr=1e-4, max_lr=1e-2, step_size_up=1000) 
+        scheduler = CyclicLR(optimizer=optimizer, base_lr=1e-5, max_lr=1e-3, step_size_up=1000) 
         scheduler.last_epoch = 1000 #start at max lr
 
         start_time = time.time()
         # keep a rolling buffer of examples from recent epochs (last N epochs)
         recent_epoch_examples = []
-        max_epoch_buffer = 60 #30 epochs is around 5gb of data
+        max_epoch_buffer = 10 #30 epochs is around 5gb of data with 100 games per epoch
 
         for epoch in range(iterations):
             all_examples = []
@@ -397,7 +401,7 @@ class Agent:
             torch.save({
                 "model": self.policy_value_network.state_dict(),
                 "optimizer": optimizer.state_dict(),
-            }, "softmax_stockfish_trained.pth")
+            }, "stockfish_trained.pth")
             print("[Stockfish-Only] checkpoint saved: stockfish_trained.pth")
 
             #Generate examplar game every epoch
