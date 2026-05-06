@@ -12,7 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from torch.optim.lr_scheduler import ReduceLROnPlateau, CyclicLR
+from torch.optim.lr_scheduler import StepLR
 from multiprocessing import get_context
 import torch.multiprocessing as mp
 from monte_carlo_tree_search import Monte_Carlo_Tree_Search
@@ -301,8 +301,7 @@ class Agent:
         # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
         
         # try cyclic lr for faster learning and possible convergence
-        # scheduler = CyclicLR(optimizer=optimizer, base_lr=1e-5, max_lr=1e-3, step_size_up=500)
-        # scheduler.last_epoch = 1000 #start at max lr
+        scheduler = StepLR(optimizer=optimizer, step_size=50, gamma=0.1)
 
         start_time = time.time()
         # keep a rolling buffer of examples from recent epochs (last N epochs)
@@ -384,9 +383,8 @@ class Agent:
                     loss = policy_loss + value_loss
                     test_loss += loss
 
-            # why is valid loss no longer accepted as parameter for step?
             valid_loss = test_loss / len(test_dataloader)
-            # scheduler.step()
+            scheduler.step()
 
             print('epoch: {}, test loss: {:.6f}, lr: {}'.format(
                 epoch + 1,
@@ -438,7 +436,7 @@ class Agent:
                     moves.append(move)
                     board.push_uci(move)
                 else:
-                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.0, debug=True)
+                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.0, debug=False)
                     moves.append(move)
                     board.push_uci(move)
 
@@ -479,6 +477,7 @@ class Agent:
                 stockfish_turn = -1
             
             while True:
+                # print(board)
                 if board.is_game_over(): 
                     cases = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
                     reward = cases[board.result()]
@@ -503,12 +502,18 @@ class Agent:
                         move = random.choice([move.uci() for move in board.legal_moves])
                         board.push_uci(move)
                     else:
+                    # start = time.time()
                         self.stockfish.set_fen_position(board.fen())
                         move = self.stockfish.get_best_move()
                         board.push_uci(move)
+                    # end = time.time()
+                    # print(f"took {end - start:.5f}s for stockfish")
                 else:
+                    # start = time.time()
                     move = self.select_move(game_state=board, num_simulations=num_simulations, temperature = temperature).item()
                     board.push_uci(move)
+                    # end = time.time()
+                    # print(f"took {end-start:.5f}s for model")
 
                 examples.append([board_tensor.squeeze(0), move_tensor_to_label(uci_to_tensor(move)), None])
                 stockfish_turn *= -1
@@ -764,7 +769,8 @@ def stockfish_self_play_worker(args):
     ) = args
 
     # force CPU for worker
-    device = torch.device("cpu")
+    # device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # limit threads in worker (ignore if not allowed at this point)
     try:
         torch.set_num_threads(1)
