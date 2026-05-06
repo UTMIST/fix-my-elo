@@ -294,14 +294,15 @@ class Agent:
         self.stockfish.set_depth(10)
 
         policy_criterion = nn.CrossEntropyLoss()
-        # prefer SmoothL1 (Huber) for value head
         value_criterion = nn.SmoothL1Loss()
         # value_criterion = nn.MSELoss()
-        optimizer = optim.AdamW(self.policy_value_network.parameters(), lr=1e-3, weight_decay=1e-4) #this lr is overwritten
-        # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
+        optimizer = optim.AdamW(
+        [{'params': self.policy_value_network.parameters(), 'lr': 1e-3, 'initial_lr': 1e-3}],
+        weight_decay=1e-4
+        )
         
         # try cyclic lr for faster learning and possible convergence
-        scheduler = StepLR(optimizer=optimizer, step_size=50, gamma=0.1)
+        scheduler = StepLR(optimizer=optimizer, step_size=50, gamma=0.1, last_epoch=41)
 
         start_time = time.time()
         # keep a rolling buffer of examples from recent epochs (last N epochs)
@@ -393,7 +394,7 @@ class Agent:
                 ))
             
             with open("LGB70k_log.txt", "a") as log_file:
-                log_file.write(f"elapsed: {time.time() - start_time:.2f}s, epoch: {epoch+1}, test loss: {valid_loss:.6f}, lr: {optimizer.param_groups[0]['lr']}\n")
+                log_file.write(f"elapsed: {time.time() - start_time:.2f}s, epoch: {epoch}, test loss: {valid_loss:.6f}, lr: {optimizer.param_groups[0]['lr']}\n")
 
             # Checkpoint
             torch.save({
@@ -604,14 +605,20 @@ class Agent:
         policy_criterion = nn.CrossEntropyLoss() # softmax regression loss function
         # use SmoothL1 (Huber) for value head - more robust than plain MSE
         value_criterion = nn.SmoothL1Loss()
-        optimizer = optim.Adam(self.policy_value_network.parameters(), lr=0.1e-4)
+        optimizer = optim.AdamW(
+        [{'params': self.policy_value_network.parameters(), 'lr': 1e-3, 'initial_lr': 1e-3}],
+        weight_decay=1e-4
+        )
+
+        scheduler = StepLR(optimizer=optimizer, step_size=50, gamma=0.1)
         start_time = time.time()
         
-        examples = []
+        recent_epoch_examples = []
+        max_epoch_buffer = 30
         
         for epoch in range(num_training_iterations):
-            print(f'starting training iteration {epoch+1}/{num_training_iterations}')
-            print('--------------------------------')
+            all_examples = []
+            print(f'starting training iteration {epoch}/{num_training_iterations}')
             
             # create training examples through self-play
             model_state_dict = {
@@ -634,24 +641,25 @@ class Agent:
 
             ctx = get_context("spawn")  # required for PyTorch safety
             
-            batch_size = 4 # fastest on vincent's cpu after a lot of testing
-            output_path = "game_examples.pkl" # checkpoint examples
+            workers = 22
             print(f"completed {0}/{num_games} games, {time.time() - start_time:.2f} seconds elapsed")
             
-            with open(output_path, "ab") as f, ctx.Pool(processes=batch_size) as pool:
-                for i, game_examples in enumerate(pool.imap_unordered(self_play_worker, args), start=1): # run self-play in parallel
-                    examples.extend(game_examples)
-                    pickle.dump(game_examples, f)
+            with ctx.Pool(processes=workers) as pool:
+                for i, game_examples in enumerate(pool.imap_unordered(stockfish_self_play_worker, worker_args), start=1):
+                    all_examples.extend(game_examples)
+                    if i % workers == 0 or i == num_games:
+                        print(f"  generated {i}/{num_games} games — elapsed: {time.time() - start_time:.2f}s")
 
-                    if i % batch_size == 0 or i == num_games:
-                        print(f"completed {i}/{num_games} games, {time.time() - start_time:.2f} seconds elapsed")
-            
 
-            # create train and test datasets
-            train_dataloader, test_dataloader = examples_to_dataset(examples, train_to_test_ratio)
-            
-            # train model
-            print('--------------------------------')
+            recent_epoch_examples.append(all_examples)
+            if len(recent_epoch_examples) > max_epoch_buffer:
+                recent_epoch_examples.pop(0)
+
+            combined_examples = []
+            for ex_list in recent_epoch_examples:
+                combined_examples.extend(ex_list)
+            train_dataloader, test_dataloader = examples_to_dataset(combined_examples, train_to_test_ratio)
+
             self.policy_value_network.train()
             
             for batch_idx, (data, target) in enumerate(train_dataloader):
@@ -883,7 +891,7 @@ def examples_to_dataset(examples, train_to_test_ratio):
     X_test = torch.stack([torch.tensor(board) if isinstance(board, list) else board for board, move, winner in test_data])
     t_test = torch.tensor([(move, winner) for board, move, winner in test_data])
 
-    batch_size = 512 # create DataLoaders
+    batch_size = 1024 # create DataLoaders
     train_dataset = TensorDataset(X_train, t_train)
     test_dataset = TensorDataset(X_test, t_test)
 
