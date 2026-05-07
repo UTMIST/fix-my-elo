@@ -544,8 +544,9 @@ class Agent:
         while True: # infinite loop until terminal state
             board = game_state.fen()
             board_tensor = fen_to_board_tensor(board).unsqueeze(0).to(device)
+
+            # print(game_state.fullmove_number)
             
-            mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set())
             move = self.select_move(game_state, num_simulations=num_simulations, temperature=temperature)
             
             # store training example
@@ -555,27 +556,27 @@ class Agent:
             
 
             # end game ("resign") if value is higher than resign_threshold for resign_moves moves, speeds up training + ensures clean training data for less-trained endgame positions with huge material advantage and not many pieces where moves are pretty random
-            with torch.no_grad():
-                p, v = self.policy_value_network(board_tensor)
-            v_scalar = v.item()
-            if v_scalar > resign_threshold:
-                consecutive_high_value_white += 1
-            else:
-                consecutive_high_value_white = 0
+            # with torch.no_grad():
+            #     p, v = self.policy_value_network(board_tensor)
+            # v_scalar = v.item()
+            # if v_scalar > resign_threshold:
+            #     consecutive_high_value_white += 1
+            # else:
+            #     consecutive_high_value_white = 0
                 
-            if v_scalar < -resign_threshold:
-                consecutive_high_value_black += 1
-            else:
-                consecutive_high_value_black = 0
+            # if v_scalar < -resign_threshold:
+            #     consecutive_high_value_black += 1
+            # else:
+            #     consecutive_high_value_black = 0
 
-            if consecutive_high_value_white >= resign_moves or consecutive_high_value_black >= resign_moves:
-                reward = 1 if consecutive_high_value_white >= resign_moves else -1
-                # assign rewards relative to the player to move at each example
-                for i, example in enumerate(examples):
-                    multiplier = 1 if (i % 2) == 0 else -1
-                    example[2] = reward * multiplier
+            # if consecutive_high_value_white >= resign_moves or consecutive_high_value_black >= resign_moves:
+            #     reward = 1 if consecutive_high_value_white >= resign_moves else -1
+            #     # assign rewards relative to the player to move at each example
+            #     for i, example in enumerate(examples):
+            #         multiplier = 1 if (i % 2) == 0 else -1
+            #         example[2] = reward * multiplier
 
-                return examples
+            #     return examples
         
         
             # end loop with terminal state
@@ -614,7 +615,7 @@ class Agent:
         start_time = time.time()
         
         recent_epoch_examples = []
-        max_epoch_buffer = 30
+        max_epoch_buffer = 3
         
         for epoch in range(num_training_iterations):
             all_examples = []
@@ -635,6 +636,7 @@ class Agent:
                     num_simulations,
                     resign_moves,
                     resign_threshold,
+                    temperature
                 )
                 for _ in range(num_games)
             ]
@@ -645,7 +647,7 @@ class Agent:
             print(f"completed {0}/{num_games} games, {time.time() - start_time:.2f} seconds elapsed")
             
             with ctx.Pool(processes=workers) as pool:
-                for i, game_examples in enumerate(pool.imap_unordered(stockfish_self_play_worker, worker_args), start=1):
+                for i, game_examples in enumerate(pool.imap_unordered(self_play_worker, args), start=1):
                     all_examples.extend(game_examples)
                     if i % workers == 0 or i == num_games:
                         print(f"  generated {i}/{num_games} games — elapsed: {time.time() - start_time:.2f}s")
@@ -660,26 +662,38 @@ class Agent:
                 combined_examples.extend(ex_list)
             train_dataloader, test_dataloader = examples_to_dataset(combined_examples, train_to_test_ratio)
 
+            # Train
+            print(f"[Selft-play] training on collected examples using {len(recent_epoch_examples)} epochs of data")
             self.policy_value_network.train()
-            
             for batch_idx, (data, target) in enumerate(train_dataloader):
                 data = data.to(device)
                 batch_move_target = target[:, 0].to(device)
                 batch_val_target = target[:, 1].float().unsqueeze(1).to(device)
 
-                pred_policy, pred_val = self.policy_value_network(data)  # calculate predictions for this batch
-                policy_loss = policy_criterion(pred_policy, batch_move_target)  # calculate loss for policy
-                value_loss = value_criterion(pred_val, batch_val_target) # calculate loss for value
+                pred_policy, pred_val = self.policy_value_network(data)
+
+                # Policy: only train on datapoints where winner label == 1
+                mask = (batch_val_target.view(-1) == 1)
+                if mask.sum() > 0:
+                    policy_loss = policy_criterion(pred_policy[mask], batch_move_target[mask])
+                else:
+                    policy_loss = torch.tensor(0.0, device=device)
+
+                # Value: train on all datapoints in the batch
+                value_loss = value_criterion(pred_val, batch_val_target)
                 loss = policy_loss + value_loss
-                optimizer.zero_grad()  # reset gradient
-                loss.backward()  # calculate gradient
-                optimizer.step()  # update parameters
+
+                optimizer.zero_grad()
+                loss.backward()
+
+                # gradient clipping to prevent explosion
+                # torch.nn.utils.clip_grad_norm_(self.policy_value_network.parameters(), max_norm=1.0)
+
+                optimizer.step()
 
                 if batch_idx % 100 == 0:
-                    print(f"batch progress: epoch {epoch+1} {(100 *(batch_idx +1)/len(train_dataloader)):.2f}% loss: {loss.item():.6f}")
-                print(f"batch progress: epoch {epoch+1} {(100 *(batch_idx +1)/len(train_dataloader)):.2f}% loss: {loss.item():.6f}")
+                    print(f"  [train] batch {batch_idx+1}/{len(train_dataloader)} loss: {loss.item():.6f}")
 
-            # check validation accuracy to see if general patterns are being learnt
             self.policy_value_network.eval()
             test_loss = 0
 
@@ -695,18 +709,25 @@ class Agent:
                     loss = policy_loss + value_loss
                     test_loss += loss
 
-            print('epoch: {}, test loss: {:.6f}'.format(
-                epoch + 1,
-                test_loss / len(test_dataloader),
+            valid_loss = test_loss / len(test_dataloader)
+            scheduler.step()
+
+            print('epoch: {}, test loss: {:.6f}, lr: {}'.format(
+                epoch,
+                valid_loss,
+                optimizer.param_groups[0]['lr']
                 ))
             torch.save({
                 "model": self.policy_value_network.state_dict(),
                 "optimizer": optimizer.state_dict(),
-                "epoch": epoch+1, 
+                "epoch": epoch, 
                 "batch": batch_idx,
-            }, "checkpoint3.pth")
+            }, "self_play_trained.pth")
             print('model checkpoint saved')
-            print('--------------------------------')
+
+            with open("self-play.txt", "a") as log_file:
+                log_file.write(f"elapsed: {time.time() - start_time:.2f}s, epoch: {epoch}, test loss: {valid_loss:.6f}, lr: {optimizer.param_groups[0]['lr']}\n")
+
     
 
         # if old network is better, update current policy network
@@ -714,10 +735,10 @@ class Agent:
         pit_result = pit(self.policy_value_network, old_nn, num_testing_games, num_simulations, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, temperature)
         if(pit_result <= improvement_threshold): 
             self.policy_value_network = old_nn
-            print(f'new nn underperformed old nn, {pit_result} games won out of {num_testing_games}')
+            print(f'new nn underperformed old nn, with score of {pit_result}')
             print('new nn did not replace old nn')
             
-        print(f'new nn outperformed old nn, {pit_result} games won out of {num_testing_games}')
+        print(f'new nn outperformed old nn, {pit_result}')
         print('new nn replaced old nn')
 
 
@@ -738,9 +759,7 @@ def self_play_worker(args):
         temperature
     ) = args
 
-    # force CPU
-    device = torch.device("cpu")
-    # limit threads in worker (safe to call if runtime allows)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     try:
         torch.set_num_threads(1)
     except RuntimeError:
@@ -821,7 +840,7 @@ def pit(policy_value_network1, policy_value_network2, num_games, num_simulations
         game.headers["Black"] = "agent2" if black == agent2 else "agent1"
 
         move_count = 0
-        print(f'playing testing game {i+1}, white: {"agent1" if white == agent1 else "agent2"}, black: {"agent2" if black == agent2 else "agent1"}')
+        print(f'playing testing game {i}, white: {"agent1" if white == agent1 else "agent2"}, black: {"agent2" if black == agent2 else "agent1"}')
 
         while True:  # infinite loop until terminal state
             # white move
@@ -864,13 +883,11 @@ def pit(policy_value_network1, policy_value_network2, num_games, num_simulations
 
                 break
 
-        with open(f"pit_games/game_{i+1:03d}.pgn", "w") as f:
+        with open(f"pit_games/game_{i:03d}.pgn", "w") as f:
             f.write(str(game))
-
     return score
 
 
-    
     
 def examples_to_dataset(examples, train_to_test_ratio):
     '''

@@ -13,7 +13,7 @@ if __name__ == "__main__":
     device = torch.device("cuda")
     model1 = SLPolicyValueNetwork().to(device)
     # model1.load_state_dict(torch.load("model_files/SL_stockfish_trained_old.pth", map_location=torch.device("cuda"))["model"])
-    model1.load_state_dict(torch.load("LGB70k_stockfish.pth", map_location=torch.device("cuda"))["model"])
+    model1.load_state_dict(torch.load("LGB_2400ELO_70k.pth", map_location=torch.device("cuda"))["model"])
 
     # only train the first model
     agent = Agent(policy_value_network=model1, c_puct=1.0, dirichlet_alpha=0.3, dirichlet_epsilon=0.3)
@@ -23,9 +23,11 @@ if __name__ == "__main__":
     # agent.agent_vs_stockfish(num_games=2, num_simulations=3200, path_to_output="pgn_files/examples.pgn", epoch=55)
 
     # train fresh network with stockfish
-    agent.stockfish_only_training(iterations=200, num_games=100, train_to_test_ratio=0.8, num_simulations=800, temperature=0.8, workers=22)
+    # agent.stockfish_only_training(iterations=200, num_games=100, train_to_test_ratio=0.8, num_simulations=800, temperature=0.8, workers=22)
 
-    
+    agent.training_self_play(num_training_iterations=100, num_games=500, train_to_test_ratio=0.8, num_simulations=1000, resign_moves=10,resign_threshold=1,num_testing_games=100,improvement_threshold=1,temperature=0.8)
+    #resign threshold and moves are both not tested, hence commented out
+
     # test model performance
     # pit_result = pit(model2, model1, num_games=10, num_simulations=1, c_puct=1.0, dirichlet_alpha=0.3, dirichlet_epsilon=0.25, temperature=0.1)
     # print(f'{pit_result} games won out of {10}')
