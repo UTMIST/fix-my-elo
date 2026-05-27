@@ -94,14 +94,15 @@ def main() -> int:
             dirichlet_epsilon=args.dirichlet_epsilon,
         )
 
-        move_uci = str(
-            agent.select_move(
+        output = agent.select_move(
                 game_state=board,
                 num_simulations=args.num_simulations,
                 temperature=args.temperature,
-                debug=False,
+                debug=True,
             )
-        )
+
+        move_uci = str(output[0])
+        explored_moves = output[1] # each item in this array looks like [move uci, #times explored, expected value, policy prior]
 
         move_obj = chess.Move.from_uci(move_uci)
         san = board.san(move_obj)
@@ -111,6 +112,7 @@ def main() -> int:
             "san": san,
             "fen": args.fen,
             "numSimulations": args.num_simulations,
+            "explored_moves": explored_moves
         }))
         return 0
     except Exception as e:
