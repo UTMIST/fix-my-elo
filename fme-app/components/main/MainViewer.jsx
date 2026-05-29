@@ -13,6 +13,8 @@ import BoardControls from '../board-pane/BoardControls';
 import BoardOptions from '../board-pane/BoardOptions';
 import './MainViewer.css';
 
+const ENGINE_REQUEST_TIMEOUT_MS = 170000;
+
 const createDefaultHeaders = () => {
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 
@@ -166,9 +168,11 @@ export default function MainViewer() {
     setIsEngineThinking(true);
     setEngineError('');
 
+    let timeoutId;
+
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      timeoutId = setTimeout(() => controller.abort(), ENGINE_REQUEST_TIMEOUT_MS);
 
       const response = await fetch('/api/agent-move', {
         method: 'POST',
@@ -202,11 +206,14 @@ export default function MainViewer() {
     } catch (err) {
       if (engineRequestIdRef.current !== requestId) return;
       if (err?.name === 'AbortError') {
-        setEngineError('Engine request timed out');
+        setEngineError(`Engine request timed out after ${Math.round(ENGINE_REQUEST_TIMEOUT_MS / 1000)}s`);
         return;
       }
       setEngineError(String(err));
     } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       if (engineRequestIdRef.current === requestId) {
         setIsEngineThinking(false);
       }

@@ -33,8 +33,8 @@ export async function POST(req: Request) {
       : 0.0;
 
     const timeoutMs = Number.isFinite(Number(process.env.AGENT_MOVE_TIMEOUT_MS))
-      ? Math.max(1000, Number(process.env.AGENT_MOVE_TIMEOUT_MS))
-      : 15000;
+      ? Math.max(100000, Number(process.env.AGENT_MOVE_TIMEOUT_MS))
+      : 150000;
 
     const engineUrl = process.env.TEAM2_ENGINE_URL ?? process.env.TEAM2_INFERENCE_URL;
     if (!engineUrl) {
