@@ -20,6 +20,146 @@ export default function MovesList({ moves, currentMoveIndex, onMoveClick }) {
       <h2 className="panel-title">Moves History</h2>
       <div ref={moveListRef} className="moves-list">
         <div className="moves-grid">
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+
+
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
+          <div className="move-item">
+            <span className="move-number">#</span>
+            <span>Move</span>
+          </div>
           {moves.map((move, i) => (
             <div
               key={i}

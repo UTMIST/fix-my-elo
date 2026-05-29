@@ -466,7 +466,7 @@
 }
 
 .moves-panel {
-  height: 700px;
+  height: 35rem;
   display: flex;
   flex-direction: column;
 }
