@@ -1,5 +1,62 @@
 /* PGNViewer.css */
 
+/* Promotion popup */
+.promotion-options {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  min-width: 110px;
+}
+
+.promotion-options h3 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  margin: 0 0 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.promotion-options .options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.promotion-options .option {
+  padding: 0.35rem 0.65rem;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.promotion-options .option-w {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #e2e8f0;
+}
+
+.promotion-options .option-w:hover {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+}
+
+.promotion-options .option-b {
+  background: #1e293b;
+  color: #f8fafc;
+  border-color: #334155;
+}
+
+.promotion-options .option-b:hover {
+  background: #334155;
+}
+
 .pgn-viewer {
   min-height: 100vh;
   background: #f8fafc;
