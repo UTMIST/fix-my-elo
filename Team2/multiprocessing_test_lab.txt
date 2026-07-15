@@ -1,0 +1,49 @@
+reading games first
+serialized version took 12.144122462 cpu seconds and 12.144750833511353 clock seconds
+79870
+1 workers took 96.01250723300001 cpu seconds and 74.40698003768921 clock seconds
+239610
+2 workers took 6.281064531999988 cpu seconds and 7.3201587200164795 clock seconds
+239610
+3 workers took 4.010741892999988 cpu seconds and 4.821160078048706 clock seconds
+239610
+4 workers took 3.702816862000006 cpu seconds and 3.7012054920196533 clock seconds
+239610
+5 workers took 3.465133500999997 cpu seconds and 3.040308952331543 clock seconds
+239610
+6 workers took 3.498361767999995 cpu seconds and 2.909743547439575 clock seconds
+239610
+7 workers took 3.4990027759999975 cpu seconds and 2.8621137142181396 clock seconds
+239610
+8 workers took 3.447136381000007 cpu seconds and 2.77219557762146 clock seconds
+239610
+9 workers took 3.4443407599999887 cpu seconds and 2.7055089473724365 clock seconds
+239610
+10 workers took 3.558312115999996 cpu seconds and 2.761535882949829 clock seconds
+239610
+11 workers took 3.4148013809999895 cpu seconds and 2.6536710262298584 clock seconds
+239610
+12 workers took 3.4540098170000135 cpu seconds and 2.661376714706421 clock seconds
+239610
+13 workers took 3.497569980999998 cpu seconds and 2.703458786010742 clock seconds
+239610
+14 workers took 3.533459238000006 cpu seconds and 2.712092638015747 clock seconds
+239610
+15 workers took 4.0668215400000065 cpu seconds and 3.115694999694824 clock seconds
+239610
+16 workers took 4.116330532000006 cpu seconds and 3.1609301567077637 clock seconds
+239610
+17 workers took 3.8811035300000185 cpu seconds and 2.9556496143341064 clock seconds
+239610
+18 workers took 3.6291059950000033 cpu seconds and 2.8015754222869873 clock seconds
+239610
+19 workers took 4.858861404999999 cpu seconds and 3.6646738052368164 clock seconds
+239610
+20 workers took 4.57042872400001 cpu seconds and 3.4901282787323 clock seconds
+239610
+21 workers took 5.027109589999981 cpu seconds and 3.847883701324463 clock seconds
+239610
+22 workers took 5.966038419 cpu seconds and 4.519148826599121 clock seconds
+239610
+23 workers took 5.464542354000002 cpu seconds and 4.208800315856934 clock seconds
+239610

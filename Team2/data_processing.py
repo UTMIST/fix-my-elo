@@ -215,8 +215,15 @@ def generate_dataset_from_pgn(
     """
     all_fens = extract_fens_grouped_with_moves(pgn_path, max_games=max_games)
 
+    return extract_from_fen(all_fens, num_workers)
+
+
+def extract_from_fen(data, num_workers):
+    dataset = []
+
     with Pool(processes=num_workers) as pool:
-        dataset = pool.map(extraction_worker, all_fens)
+        for d in pool.imap_unordered(extraction_worker, data):
+            dataset += d
 
     return dataset
 
@@ -232,22 +239,18 @@ def extraction_worker(data: tuple[str, str, str]):
     move_tensor = uci_to_tensor(move)
     move = move_tensor_to_label(move_tensor)
 
-    return (board, move, winner)
+    return (board.numpy(), move, winner)
 
 
-def generate_dataset_from_pgn_without_multiprocessing(
-    pgn_path: str, max_games=1000000
-) -> list[torch.Tensor, torch.Tensor]:
+def extract_from_fen_without_multiprocessing(data) -> list[torch.Tensor, torch.Tensor]:
     """
     Takes in a pgn file path and returns a list of [torch.Tensor(12,8,8), torch.Tensor(2,8,8,5)].
     First tensor is the board state before the move.
     Second tensor is the move made from that position as encoded following uci_to_tensor.
     """
-    all_fens = extract_fens_grouped_with_moves(pgn_path, max_games=max_games)
-
     dataset = []
-    for data in all_fens:
-        dataset.append(extraction_worker(data))
+    for d in data:
+        dataset.append(extraction_worker(d))
 
     return dataset
 
@@ -256,23 +259,19 @@ if __name__ == "__main__":
     # test
     import time
     import gc
+    import torch.multiprocessing as mp
 
-    for i in range(1, 9):
-        start1 = time.process_time()
-        start2 = time.time()
-        dataset1 = generate_dataset_from_pgn("pgn_files/Tal.pgn", num_workers=i)
-        end1 = time.process_time()
-        end2 = time.time()
-        print(
-            f"{i} workers took {end1-start1} cpu seconds and {end2-start2} clock seconds"
-        )
-        print(len(dataset1))
-        del dataset1
-        gc.collect()
+    mp.set_sharing_strategy("file_system")
+    max_games = 1000
+
+    print("reading games first")
+    extracted = extract_fens_grouped_with_moves(
+        "pgn_files/Tal.pgn", max_games=max_games
+    )
 
     start1 = time.process_time()
     start2 = time.time()
-    dataset2 = generate_dataset_from_pgn_without_multiprocessing("pgn_files/Tal.pgn")
+    dataset2 = extract_from_fen_without_multiprocessing(extracted)
     end1 = time.process_time()
     end2 = time.time()
     print(
@@ -281,3 +280,16 @@ if __name__ == "__main__":
     print(len(dataset2))
     del dataset2
     gc.collect()
+
+    for i in range(1, 24):
+        start1 = time.process_time()
+        start2 = time.time()
+        dataset1 = extract_from_fen(extracted, num_workers=i)
+        end1 = time.process_time()
+        end2 = time.time()
+        print(
+            f"{i} workers took {end1-start1} cpu seconds and {end2-start2} clock seconds"
+        )
+        print(len(dataset1))
+        del dataset1
+        gc.collect()
