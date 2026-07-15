@@ -250,7 +250,7 @@ def extract_from_fen_without_multiprocessing(data) -> list[torch.Tensor, torch.T
     """
     dataset = []
     for d in data:
-        dataset.append(extraction_worker(d))
+        dataset += extraction_worker(d)
 
     return dataset
 
