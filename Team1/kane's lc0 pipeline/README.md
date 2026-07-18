@@ -8,7 +8,7 @@ records two different views of a position:
   principal variations.
 
 Selected alternatives are then played on the board and searched again to find
-concrete refutations. Output is newline-delimited JSON using schema version 2.
+concrete refutations.
 
 ## Requirements
 
