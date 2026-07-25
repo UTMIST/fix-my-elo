@@ -11,23 +11,23 @@ import torch
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-TEAM2_DIR = Path(__file__).resolve().parent
-TEAM2_SOURCE_DIR = TEAM2_DIR / "Team2" if (TEAM2_DIR / "Team2").exists() else TEAM2_DIR
-if str(TEAM2_SOURCE_DIR) not in sys.path:
-    sys.path.insert(0, str(TEAM2_SOURCE_DIR))
+BASE_DIR = Path(__file__).resolve().parent
+SOURCE_DIR = BASE_DIR / "Team2" if (BASE_DIR / "Team2").exists() else BASE_DIR
+if str(SOURCE_DIR) not in sys.path:
+    sys.path.insert(0, str(SOURCE_DIR))
 
 from requirements.agent import Agent
 from requirements.SLPolicyValueGPU import SLPolicyValueNetwork
 
 
-MODEL_URL = os.environ.get("TEAM2_MODEL_URL")
-MODEL_PATH = Path(os.environ.get("TEAM2_MODEL_PATH", "/tmp/fix-my-elo-model.pth"))
-MODEL_TIMEOUT_SECONDS = int(os.environ.get("TEAM2_MODEL_DOWNLOAD_TIMEOUT_SECONDS", "1800"))
-DEFAULT_NUM_SIM = int(os.environ.get("TEAM2_NUM_SIM_DEFAULT", "120"))
-DEFAULT_TEMP = float(os.environ.get("TEAM2_TEMP_DEFAULT", "0.0"))
-C_PUCT = float(os.environ.get("TEAM2_C_PUCT", "1.0"))
-DIRICHLET_ALPHA = float(os.environ.get("TEAM2_DIRICHLET_ALPHA", "0.3"))
-DIRICHLET_EPSILON = float(os.environ.get("TEAM2_DIRICHLET_EPSILON", "0.25"))
+MODEL_URL = os.environ.get("MODEL_URL")
+MODEL_PATH = Path(os.environ.get("MODEL_PATH", "/tmp/fix-my-elo-model.pth"))
+MODEL_TIMEOUT_SECONDS = int(os.environ.get("MODEL_DOWNLOAD_TIMEOUT_SECONDS", "1800"))
+DEFAULT_NUM_SIM = int(os.environ.get("NUM_SIM_DEFAULT", "120"))
+DEFAULT_TEMP = float(os.environ.get("TEMP_DEFAULT", "0.0"))
+C_PUCT = float(os.environ.get("C_PUCT", "1.0"))
+DIRICHLET_ALPHA = float(os.environ.get("DIRICHLET_ALPHA", "0.3"))
+DIRICHLET_EPSILON = float(os.environ.get("DIRICHLET_EPSILON", "0.25"))
 
 app = modal.App("fix-my-elo-engine")
 
@@ -75,7 +75,7 @@ def _load_agent() -> Agent:
         return _AGENT
 
     if not MODEL_URL:
-        raise RuntimeError("TEAM2_MODEL_URL is not configured")
+        raise RuntimeError("MODEL_URL is not configured")
 
     model_path = _download_model(MODEL_URL, MODEL_PATH)
 
@@ -115,7 +115,7 @@ def _load_agent() -> Agent:
         "python-chess>=1.999",
         "numpy>=1.26.0",
         "torch",
-    ).add_local_dir(str(TEAM2_DIR), remote_path="/root/Team2"),
+    ).add_local_dir(str(BASE_DIR), remote_path="/root/Team2"),
     secrets=[modal.Secret.from_name("fix-my-elo-team2")],
     memory=4096,
     cpu=2,

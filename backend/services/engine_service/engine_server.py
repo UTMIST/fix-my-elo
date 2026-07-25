@@ -1,15 +1,19 @@
-import json
 import os
 import sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+
 
 import chess
 
-from requirements.agent import Agent
-from requirements.SLPolicyValueGPU import SLPolicyValueNetwork
+from services.engine_service.requirements.agent import Agent
+from services.engine_service.requirements.SLPolicyValueGPU import SLPolicyValueNetwork
+from api.call_engine.move import EnginePayload
 
 
-def load_agent(model_path: str, c_puct: float, dirichlet_alpha: float, dirichlet_epsilon: float) -> Agent:
+def load_agent(
+    model_path: str, c_puct: float, dirichlet_alpha: float, dirichlet_epsilon: float
+) -> Agent:
     import torch
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -60,12 +64,16 @@ def parse_int(name: str, default: int) -> int:
         return default
 
 
-MODEL_PATH = os.getenv("TEAM2_MODEL_PATH", "/app/Team2/model_files/model.pth")
-C_PUCT = parse_float("TEAM2_C_PUCT", 1.0)
-DIRICHLET_ALPHA = parse_float("TEAM2_DIRICHLET_ALPHA", 0.3)
-DIRICHLET_EPSILON = parse_float("TEAM2_DIRICHLET_EPSILON", 0.25)
-DEFAULT_NUM_SIM = parse_int("TEAM2_NUM_SIM_DEFAULT", 120)
-DEFAULT_TEMP = parse_float("TEAM2_TEMP_DEFAULT", 0.0)
+MODEL_PATH = os.getenv(
+    "MODEL_PATH", "./services/engine_service/SL_trained_stockfish_trained.pth"
+)
+C_PUCT = parse_float("C_PUCT", 1.0)
+DIRICHLET_ALPHA = parse_float("DIRICHLET_ALPHA", 0.3)
+DIRICHLET_EPSILON = parse_float("DIRICHLET_EPSILON", 0.25)
+DEFAULT_NUM_SIM = parse_int("NUM_SIM_DEFAULT", 120)
+DEFAULT_TEMP = parse_float("TEMP_DEFAULT", 0.0)
+
+app = FastAPI()
 
 
 try:
@@ -75,99 +83,74 @@ except Exception as exc:
     sys.exit(1)
 
 
-class EngineHandler(BaseHTTPRequestHandler):
-    def _send_json(self, status: int, payload: dict) -> None:
-        body = json.dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+@app.get("/health")
+def get():
+    return JSONResponse("running!", 200)
 
-    def do_GET(self):
-        if self.path == "/health":
-            self._send_json(200, {"ok": True})
-            return
-        self._send_json(404, {"error": "Not found"})
 
-    def do_POST(self):
-        if self.path != "/move":
-            self._send_json(404, {"error": "Not found"})
-            return
+@app.post("/move")
+def post(payload: EnginePayload):
 
-        try:
-            content_length = int(self.headers.get("Content-Length", "0"))
-            raw = self.rfile.read(content_length).decode("utf-8")
-            payload = json.loads(raw) if raw else {}
-        except Exception:
-            self._send_json(400, {"error": "Invalid JSON"})
-            return
+    fen = payload.fen
+    if not fen:
+        raise HTTPException(400, "error: fen is required")
 
-        fen = str(payload.get("fen", "")).strip()
-        if not fen:
-            self._send_json(400, {"error": "fen is required"})
-            return
+    try:
+        board = chess.Board(fen)
+    except ValueError as exc:
+        raise HTTPException(400, exc)
 
-        try:
-            board = chess.Board(fen)
-        except ValueError as exc:
-            self._send_json(400, {"error": f"Invalid FEN: {exc}"})
-            return
-
-        if board.is_game_over(claim_draw=True):
-            self._send_json(400, {"error": "Game already over", "result": board.result(claim_draw=True)})
-            return
-
-        try:
-            num_sim = int(payload.get("numSimulations", DEFAULT_NUM_SIM))
-        except Exception:
-            num_sim = DEFAULT_NUM_SIM
-        if num_sim < 1:
-            num_sim = 1
-
-        try:
-            temp = float(payload.get("temperature", DEFAULT_TEMP))
-        except Exception:
-            temp = DEFAULT_TEMP
-
-        try:
-            move_uci = str(
-                AGENT.select_move(
-                    game_state=board,
-                    num_simulations=num_sim,
-                    temperature=temp,
-                    debug=False,
-                )
-            )
-            move_obj = chess.Move.from_uci(move_uci)
-            san = board.san(move_obj)
-        except Exception as exc:
-            self._send_json(500, {"error": f"Engine failure: {exc}"})
-            return
-
-        self._send_json(
-            200,
-            {
-                "move": move_uci,
-                "san": san,
-                "fen": fen,
-                "numSimulations": num_sim,
-            },
+    if board.is_game_over(claim_draw=True):
+        raise HTTPException(
+            400, {"error": "Game already over", "result": board.result(claim_draw=True)}
         )
 
-    def log_message(self, format: str, *args) -> None:
-        # silence default HTTP server logs
-        return
+    try:
+        num_sim = int(payload.numSimulations)
+    except Exception as e:
+        raise HTTPException(400, e)
+    if num_sim < 1:
+        num_sim = 1
 
+    try:
+        temp = float(payload.temperature)
+    except Exception as e:
+        raise HTTPException(400, e)
 
-def main() -> int:
-    host = os.getenv("TEAM2_ENGINE_HOST", "127.0.0.1")
-    port = parse_int("TEAM2_ENGINE_PORT", 8001)
-    server = ThreadingHTTPServer((host, port), EngineHandler)
-    print(f"[engine_server] Listening on http://{host}:{port}")
-    server.serve_forever()
-    return 0
+    try:
+        engine_reponse = AGENT.select_move(
+            game_state=board,
+            num_simulations=num_sim,
+            temperature=temp,
+            debug=True,
+        )
+        move_uci, combined = engine_reponse[0], engine_reponse[1]
 
+        move_obj = chess.Move.from_uci(move_uci)
+        san = board.san(move_obj)
+    except Exception as exc:
+        raise HTTPException(500, {"error": f"Engine failure: {exc}"})
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+    # `combined` is a list of (move, count, eval, prior) tuples where the numeric
+    # fields are numpy scalars (float32/float64) that json can't serialize. Convert
+    # to native Python types so JSONResponse can encode them.
+    counts = [
+        {
+            "move": str(move),
+            "count": float(count),
+            "eval": float(evaluation),
+            "prior": float(prior),
+        }
+        for move, count, evaluation, prior in combined
+    ]
+
+    return JSONResponse(
+        {
+            "move": move_uci,
+            "counts": counts,
+            "san": san,
+            "fen": fen,
+            "numSimulations": num_sim,
+        },
+        200,
+    )

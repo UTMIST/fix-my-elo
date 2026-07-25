@@ -44,28 +44,36 @@ async def move_request(req: AgentMoveRequest):
     num_simulations = (
         max(1, math.floor(req.numSimulations))
         if req.numSimulations is not None and math.isfinite(req.numSimulations)
-        else 120
+        else _env_int("AGENT_MOVE_DEFAULT_NUM_SIM", 120)
     )
 
     temperature = (
         float(req.temperature)
         if req.temperature is not None and math.isfinite(req.temperature)
-        else 0.0
+        else _env_float("AGENT_MOVE_DEFAULT_TEMP", 0.0)
     )
 
-    timeout_env = _to_float(os.environ.get("AGENT_MOVE_TIMEOUT_MS"))
-    timeout_ms = max(100000, timeout_env) if timeout_env is not None else 150000
+    min_timeout_ms = _env_float("AGENT_MOVE_MIN_TIMEOUT_MS", 100000)
+    default_timeout_ms = _env_float("AGENT_MOVE_TIMEOUT_MS", 150000)
+    timeout_override = _to_float(os.environ.get("AGENT_MOVE_TIMEOUT_MS"))
+    timeout_ms = (
+        max(min_timeout_ms, timeout_override)
+        if timeout_override is not None
+        else default_timeout_ms
+    )
 
-    engine_url = os.environ.get("TEAM2_ENGINE_URL") or os.environ.get("TEAM2_INFERENCE_URL")
+    engine_url = os.environ.get("ENGINE_URL") or os.environ.get(
+        "INFERENCE_URL"
+    )
     if not engine_url:
         return JSONResponse(
             {
-                "error": "TEAM2_ENGINE_URL is not configured",
-                "details": "Set TEAM2_ENGINE_URL to your Modal /move endpoint.",
+                "error": "ENGINE_URL is not configured",
+                "details": "Set ENGINE_URL to your Modal /move endpoint.",
             },
             status_code=500,
         )
-
+    engine_url += "/move"
     engine_response = await call_engine_server(
         engine_url,
         EnginePayload(
@@ -75,11 +83,12 @@ async def move_request(req: AgentMoveRequest):
         ),
         timeout_ms,
     )
-
     return JSONResponse(engine_response["body"], status_code=engine_response["status"])
 
 
-async def call_engine_server(url: str, payload: EnginePayload, timeout_ms: float) -> dict:
+async def call_engine_server(
+    url: str, payload: EnginePayload, timeout_ms: float
+) -> dict:
     try:
         async with httpx.AsyncClient(timeout=timeout_ms / 1000) as client:
             response = await client.post(
@@ -120,3 +129,13 @@ def _to_float(value: Optional[str]) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return parsed if math.isfinite(parsed) else None
+
+
+def _env_float(name: str, default: float) -> float:
+    value = _to_float(os.environ.get(name))
+    return value if value is not None else default
+
+
+def _env_int(name: str, default: int) -> int:
+    value = _to_float(os.environ.get(name))
+    return int(value) if value is not None else default

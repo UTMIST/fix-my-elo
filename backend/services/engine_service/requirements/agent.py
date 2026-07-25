@@ -15,9 +15,9 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import StepLR
 from multiprocessing import get_context
 import torch.multiprocessing as mp
-from requirements.monte_carlo_tree_search import Monte_Carlo_Tree_Search
-from requirements.SLPolicyValueGPU import SLPolicyValueNetwork
-from requirements.data_processing import fen_to_board_tensor, uci_to_tensor, move_tensor_to_label
+from services.engine_service.requirements.monte_carlo_tree_search import Monte_Carlo_Tree_Search
+from services.engine_service.requirements.SLPolicyValueGPU import SLPolicyValueNetwork
+from services.engine_service.requirements.data_processing import fen_to_board_tensor, uci_to_tensor, move_tensor_to_label
 try:
     from stockfish import Stockfish
 except ImportError:

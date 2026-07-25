@@ -8,11 +8,31 @@
 # database or a cache. For examples, see the Awesome Compose repository:
 # https://github.com/docker/awesome-compose
 services:
-  backend_api:
+  api:
+    container_name: api
     build:
-      context: .
+      context: ./backend
+    environment:
+      - ENGINE_URL=http://engine_server:8001
+      - FRONTEND_URL=http://frontend:3000
     ports:
       - 8000:8000
+  engine_server:
+    container_name: engine_server
+    build:
+      context: ./backend
+      dockerfile: engine_server.Dockerfile
+    ports:
+      - 8001:8001
+  frontend:
+    container_name: frontend
+    build:
+      context: ./fme-app
+    environment:
+      NODE_ENV: production
+      BACKEND_API_URL: http://api:8000
+    ports:
+      - 3000:3000
 
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to
