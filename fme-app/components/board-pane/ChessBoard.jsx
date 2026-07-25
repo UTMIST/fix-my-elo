@@ -3,6 +3,7 @@
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import { useMemo, useState } from "react";
+import PromotionOptions from "./PromotionOptions";
 
 export default function ChessBoard({
   moves,
@@ -14,6 +15,7 @@ export default function ChessBoard({
 }) {
   const [moveFrom, setMoveFrom] = useState('');
   const [optionSquares, setOptionSquares] = useState({});
+  const [pendingPromotion, setPendingPromotion] = useState(null);
 
   const game = useMemo(() => {
     const game = new Chess();
@@ -58,17 +60,53 @@ export default function ChessBoard({
     return true;
   };
 
+  const isPromotionMove = (sourceSquare, targetSquare) => {
+    const piece = game.get(sourceSquare);
+    const targetRank = targetSquare[1];
+    
+    // acctually a promotion
+    if (!piece || piece.type !== 'p') {
+      return false;
+    }
+    else if (!((piece.color === 'w' && targetRank === '8') || 
+            (piece.color === 'b' && targetRank === '1'))) {
+      return false;
+    } 
+
+    // is a legal promotion
+    const legalMoves = game.moves({ square: sourceSquare, verbose: true });
+    return legalMoves.some(m => m.to === targetSquare && m.promotion);
+  };
+
+  const squareToPercent = (square) => {
+    const file = square.charCodeAt(0) - 97; // a=0, h=7
+    const rank = parseInt(square[1]) - 1;   // 1=0, 8=7
+    if (boardOrientation === 'white') {
+      return { left: (file / 8) * 100, top: ((7 - rank) / 8) * 100 };
+    }
+    return { left: ((7 - file) / 8) * 100, top: (rank / 8) * 100 };
+  };
+
+  // moving logic
   const commitMove = (sourceSquare, targetSquare) => {
+    // only let users move if it's their turn
     if (canUserMove && !canUserMove(game)) {
       return false;
     }
 
+    if (isPromotionMove(sourceSquare, targetSquare)) {
+      const piece = game.get(sourceSquare);
+      setPendingPromotion({ sourceSquare, targetSquare, color: piece.color });
+
+      // get rid of see-through piece + dot while player decides 
+      setMoveFrom('');
+      setOptionSquares({});
+
+      return true;
+    }
+
     try {
-      const move = game.move({
-        from: sourceSquare,
-        to: targetSquare,
-        promotion: 'q',
-      });
+      const move = game.move({ from: sourceSquare, to: targetSquare });
 
       if (!move) return false;
 
@@ -82,6 +120,28 @@ export default function ChessBoard({
     } catch {
       return false;
     }
+  };
+
+  const finishPromotion = (piece) => {
+    if (!pendingPromotion) {
+      return;
+    }
+    const { sourceSquare, targetSquare } = pendingPromotion;
+
+    try {
+      const move = game.move({ from: sourceSquare, to: targetSquare, promotion: piece });
+      if (move) {
+        const baseMoves = moves.slice(0, currentMoveIndex + 1);
+        const updatedMoves = [...baseMoves, move.san];
+        onMovePlayed?.(updatedMoves);
+      }
+    } catch {
+      // nothing lol
+    }
+    
+    setPendingPromotion(null);
+    setMoveFrom('');
+    setOptionSquares({});
   };
 
   const onSquareClick = ({ square, piece }) => {
@@ -123,5 +183,27 @@ export default function ChessBoard({
     },
   };
 
-  return <Chessboard options={chessboardOptions} />;
+  const popupPosition = pendingPromotion ? squareToPercent(pendingPromotion.targetSquare) : null;
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <Chessboard options={chessboardOptions} />
+      {pendingPromotion && (
+        <div
+          style={{
+            position: 'absolute',
+            left: `${popupPosition.left}%`,
+            top: `${popupPosition.top}%`,
+            transform: popupPosition.top < 50 ? 'translateX(-10%)' : 'translate(-10%, -100%)',
+            zIndex: 10,
+          }}
+        >
+          <PromotionOptions
+            color={pendingPromotion.color}
+            onPromote={finishPromotion}
+          />
+        </div>
+      )}
+    </div>
+  );
 }

@@ -13,6 +13,7 @@
     "@mliebelt/pgn-parser": "^1.4.19",
     "chess.js": "^1.4.0",
     "chessground": "^9.2.1",
+    "fme-app": "file:",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-chessboard": "^5.8.6",

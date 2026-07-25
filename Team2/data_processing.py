@@ -2,6 +2,8 @@ import chess
 import chess.pgn
 import torch
 import string
+from multiprocessing import Pool
+
 
 # NEED TO ADD COLOUR LAYER IN ENCODING TO INDICATE WHOSE TURN IT IS
 def fen_to_board_tensor(fen):
@@ -41,7 +43,7 @@ def fen_to_board_tensor(fen):
     if player == "w":
         board[12, :, :] = 1  # white to move
     else:
-        board[12, :, :]= -1  # black to move
+        board[12, :, :] = -1  # black to move
     return board
 
 
@@ -96,19 +98,24 @@ def uci_to_tensor(uci_string: str) -> torch.Tensor:
     return final
 
 
-def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, str]]:
+def extract_fens_grouped_with_moves(
+    pgn_path, max_games=1000000, verbose=False
+) -> list[list[str, str, str]]:
     """
-    Takes in a PGN path and returns list[list[FEN, move_played, winner]]
+    Takes in a PGN path and returns list[tuple[FEN, move_played, winner]]
     """
     # First, count total games
     total_games = 0
     with open(pgn_path, "r") as f:
         while chess.pgn.read_game(f):
             total_games += 1
-            print(f"Total games: {total_games}")
+            if verbose:
+                print(f"Total games: {total_games}")
             if total_games >= max_games:
                 break
     total_games = min(total_games, max_games)
+    if verbose:
+        print(f"read {total_games} games")
 
     all_fens = []
     with open(pgn_path, "r") as f:
@@ -118,7 +125,8 @@ def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, s
                 break
 
             percent = (i + 1) / total_games * 100
-            print(f"extracting fens with moves: {percent:.2f}% done")
+            if verbose:
+                print(f"extracting fens with moves: {percent:.2f}% done")
 
             board = game.board()
             game_fens = []
@@ -135,7 +143,7 @@ def extract_fens_grouped_with_moves(pgn_path, max_games=100) -> list[list[str, s
                 board.push(move)
                 current_player_eval *= -1
 
-            all_fens.append(game_fens)
+            all_fens += game_fens
     return all_fens
 
 
@@ -198,7 +206,7 @@ def label_to_move_table():
 
 
 def generate_dataset_from_pgn(
-    pgn_path: str, max_games=100
+    pgn_path: str, max_games=1000000, num_workers=1
 ) -> list[torch.Tensor, torch.Tensor]:
     """
     Takes in a pgn file path and returns a list of [torch.Tensor(12,8,8), torch.Tensor(2,8,8,5)].
@@ -206,27 +214,82 @@ def generate_dataset_from_pgn(
     Second tensor is the move made from that position as encoded following uci_to_tensor.
     """
     all_fens = extract_fens_grouped_with_moves(pgn_path, max_games=max_games)
+
+    return extract_from_fen(all_fens, num_workers)
+
+
+def extract_from_fen(data, num_workers):
     dataset = []
-    for index, game in enumerate(all_fens):
-        for data in game:
-            fen = data[0]
-            move = data[1]
-            winner = data[2]
 
-            board = fen_to_board_tensor(fen)
-            move_tensor = uci_to_tensor(move)
-            move = move_tensor_to_label(move_tensor)
-
-            dataset.append([board, move, winner])
-
-        if index % 100 == 0:
-            print(f"dataset generation: processed {index/len(all_fens)*100}% of games.")
+    with Pool(processes=num_workers) as pool:
+        for d in pool.imap_unordered(extraction_worker, data):
+            dataset += d
 
     return dataset
 
+
+def extraction_worker(data: tuple[str, str, str]):
+    """datapoint: list[list[FEN, move_played, winner]]"""
+
+    fen = data[0]
+    move = data[1]
+    winner = data[2]
+
+    board = fen_to_board_tensor(fen)
+    move_tensor = uci_to_tensor(move)
+    move = move_tensor_to_label(move_tensor)
+
+    return (board.numpy(), move, winner)
+
+
+def extract_from_fen_without_multiprocessing(data) -> list[torch.Tensor, torch.Tensor]:
+    """
+    Takes in a pgn file path and returns a list of [torch.Tensor(12,8,8), torch.Tensor(2,8,8,5)].
+    First tensor is the board state before the move.
+    Second tensor is the move made from that position as encoded following uci_to_tensor.
+    """
+    dataset = []
+    for d in data:
+        dataset += extraction_worker(d)
+
+    return dataset
+
+
 if __name__ == "__main__":
     # test
-    dataset = generate_dataset_from_pgn("Team2/masaurus101-white.pgn")
-    print(dataset[0])
-    print(dataset[1])
-    print(dataset[2])
+    import time
+    import gc
+    import torch.multiprocessing as mp
+
+    mp.set_sharing_strategy("file_system")
+    max_games = 1000
+
+    print("reading games first")
+    extracted = extract_fens_grouped_with_moves(
+        "pgn_files/Tal.pgn", max_games=max_games
+    )
+
+    start1 = time.process_time()
+    start2 = time.time()
+    dataset2 = extract_from_fen_without_multiprocessing(extracted)
+    end1 = time.process_time()
+    end2 = time.time()
+    print(
+        f"serialized version took {end1-start1} cpu seconds and {end2-start2} clock seconds"
+    )
+    print(len(dataset2))
+    del dataset2
+    gc.collect()
+
+    for i in range(1, 24):
+        start1 = time.process_time()
+        start2 = time.time()
+        dataset1 = extract_from_fen(extracted, num_workers=i)
+        end1 = time.process_time()
+        end2 = time.time()
+        print(
+            f"{i} workers took {end1-start1} cpu seconds and {end2-start2} clock seconds"
+        )
+        print(len(dataset1))
+        del dataset1
+        gc.collect()
