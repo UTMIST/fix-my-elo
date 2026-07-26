@@ -7,4 +7,4 @@ RUN pip install modal python-dotenv
 
 COPY . .
 
-CMD modal serve --env=FME-engine  services/engine_service/modal_api.py
+CMD modal deploy --env=FME-engine  services/engine_service/modal_api.py

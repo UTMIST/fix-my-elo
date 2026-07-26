@@ -13,8 +13,7 @@ services:
     build:
       context: ./backend
     environment:
-      # - ENGINE_URL=http://engine_server:8001
-      - ENGINE_URL=https://masarumorisako-fme-engine--fme-engine-modal-webapp-dev.modal.run
+      - ENGINE_URL=http://engine_server:8001
       - FRONTEND_URL=http://frontend:3000
     ports:
       - 8000:8000
