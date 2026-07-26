@@ -2,13 +2,15 @@ import os
 import sys
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
-
-
 import chess
-
 from services.engine_service.requirements.agent import Agent
 from services.engine_service.requirements.SLPolicyValueGPU import SLPolicyValueNetwork
 from api.call_engine.move import EnginePayload
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def load_agent(
@@ -17,6 +19,7 @@ def load_agent(
     import torch
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info(f"device: {device}")
     model = SLPolicyValueNetwork().to(device)
 
     if not os.path.exists(model_path):

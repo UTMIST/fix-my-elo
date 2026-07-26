@@ -8,10 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.call_engine.move import router as agent_move_router
 
-# fastapi dev / uvicorn do NOT read .env files on their own, so os.environ never
-# sees them. Load backend/.env explicitly (path is relative to this file, so it
-# works regardless of the working directory). No-op in Docker where env is preset.
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(".env")
 
 app = FastAPI()
 

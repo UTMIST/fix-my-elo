@@ -6,8 +6,8 @@ import sys
 import chess
 import torch
 
-from requirements.agent import Agent
-from requirements.SLPolicyValueGPU import SLPolicyValueNetwork
+from services.engine_service.requirements.agent import Agent
+from services.engine_service.requirements.SLPolicyValueGPU import SLPolicyValueNetwork
 
 
 def load_agent(model_path: str, c_puct: float, dirichlet_alpha: float, dirichlet_epsilon: float) -> Agent:

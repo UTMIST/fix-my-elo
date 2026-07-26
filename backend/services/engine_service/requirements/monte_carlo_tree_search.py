@@ -10,7 +10,7 @@ class Monte_Carlo_Tree_Search:
     Monte Carlo Tree Search implementation using policy and value networks.
     '''
 
-    def __init__(self, policy_value_network, c_puct, alpha, epsilon, visited, mcts_policy_temperature=1.0, mcts_temperature=1.0, policy_batch_size=16, fpu=4.0):
+    def __init__(self, policy_value_network, c_puct, alpha, epsilon, visited, mcts_policy_temperature=1.0, mcts_temperature=1.0, policy_batch_size=64, fpu=4.0):
         '''
         policy_network: neural network that predicts move probabilities
         value_network: neural network that predicts state value
