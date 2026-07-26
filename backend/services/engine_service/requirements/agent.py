@@ -64,7 +64,7 @@ class Agent:
             )
 
 
-    def select_move(self, game_state, num_simulations, temperature=0.0, mcts_policy_temperature=1.0, mcts_temperature=1.0, debug=False):
+    def select_move(self, game_state, num_simulations, temperature=0.0, mcts_policy_temperature=0.1, mcts_temperature=0.1, debug=False):
         '''
         Selects the best move based on the policy network's predictions.
         '''

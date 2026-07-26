@@ -21,7 +21,10 @@ services:
     container_name: modal
     build:
       context: ./backend
-      dockerfile: modal.Dockerfile
+      dockerfile: runtime.modal.Dockerfile
+    environment:
+      MODAL_TOKEN_ID: ${MODAL_TOKEN_ID}
+      MODAL_TOKEN_SECRET: ${MODAL_TOKEN_SECRET}
   frontend:
     container_name: frontend
     build:
