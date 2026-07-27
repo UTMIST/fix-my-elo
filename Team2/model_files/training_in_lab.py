@@ -143,11 +143,11 @@ if __name__ == "__main__":
                 loss.backward()  # calculate gradient
                 optimizer.step()  # update parameters
 
-                # print(
-                #     f"epoch {epoch + 1} batch {index + 1}/{num_inner_batches} "
-                #     f"({(index + 1) / num_inner_batches * 100:.1f}%) loss: {loss.item():.4f} "
-                #     f"elapsed: {time.time() - epoch_start:.1f}s"
-                # )
+                print(
+                    f"      epoch {epoch + 1} batch {index + 1}/{num_inner_batches} "
+                    f"({(index + 1) / num_inner_batches * 100:.1f}%) loss: {loss.item():.4f} "
+                    f"elapsed: {time.time() - epoch_start:.1f}s"
+                )
                 train_loss_sum += loss.item()
                 train_batches += 1
                 batch_idx += 1
@@ -203,10 +203,10 @@ if __name__ == "__main__":
             writer.writerow(
                 [
                     epoch + 1,
-                    avg_train_loss,
-                    avg_val_loss,
-                    round(epoch_time, 1),
-                    round(total_time, 1),
+                    float(avg_train_loss),
+                    float(avg_val_loss),
+                    float(round(epoch_time, 1)),
+                    float(round(total_time, 1)),
                 ]
             )
 
