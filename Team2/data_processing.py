@@ -218,12 +218,13 @@ def generate_dataset_from_pgn(
     return extract_from_fen(all_fens, num_workers)
 
 
-def extract_from_fen(data, num_workers):
+def extract_from_fen(data, num_workers, chunksize):
     dataset = []
 
     with Pool(processes=num_workers) as pool:
-        for d in pool.imap_unordered(extraction_worker, data):
-            dataset += d
+        # adjust chunksize per machine
+        for d in pool.imap(extraction_worker, data, chunksize=chunksize):
+            dataset.append(d)
 
     return dataset
 
@@ -239,7 +240,7 @@ def extraction_worker(data: tuple[str, str, str]):
     move_tensor = uci_to_tensor(move)
     move = move_tensor_to_label(move_tensor)
 
-    return (board.numpy(), move, winner)
+    return (board, move, winner)
 
 
 def extract_from_fen_without_multiprocessing(data) -> list[torch.Tensor, torch.Tensor]:
@@ -250,7 +251,7 @@ def extract_from_fen_without_multiprocessing(data) -> list[torch.Tensor, torch.T
     """
     dataset = []
     for d in data:
-        dataset += extraction_worker(d)
+        dataset.append(extraction_worker(d))
 
     return dataset
 
@@ -262,11 +263,11 @@ if __name__ == "__main__":
     import torch.multiprocessing as mp
 
     mp.set_sharing_strategy("file_system")
-    max_games = 1000
+    max_games = 1
 
     print("reading games first")
     extracted = extract_fens_grouped_with_moves(
-        "pgn_files/Tal.pgn", max_games=max_games
+        "Team2/pgn_files/Tal.pgn", max_games=max_games
     )
 
     start1 = time.process_time()
@@ -278,10 +279,11 @@ if __name__ == "__main__":
         f"serialized version took {end1-start1} cpu seconds and {end2-start2} clock seconds"
     )
     print(len(dataset2))
+    print(dataset2[0])
     del dataset2
     gc.collect()
 
-    for i in range(1, 24):
+    for i in range(1, 4):
         start1 = time.process_time()
         start2 = time.time()
         dataset1 = extract_from_fen(extracted, num_workers=i)
@@ -291,5 +293,6 @@ if __name__ == "__main__":
             f"{i} workers took {end1-start1} cpu seconds and {end2-start2} clock seconds"
         )
         print(len(dataset1))
+        print(dataset1[0])
         del dataset1
         gc.collect()
