@@ -1,4 +1,4 @@
-from torch.utils.data import DataLoader, Dataset
+import gc
 from Team2.data_processing import (
     fen_to_board_tensor,
     uci_to_tensor,
@@ -54,7 +54,7 @@ class PGN_Dataset:
             count = 0
             while True:
                 game = chess.pgn.read_game(f)
-                if game is None:
+                if game is None or count == max_games:
                     break
                 count += 1
         self.length = min(count, max_games)
@@ -79,7 +79,9 @@ class PGN_Dataset:
                     processed = extract_from_fen(batch, num_workers=num_workers, chunksize=chunksize)
                     # processed = extract_from_fen_without_multiprocessing(batch)
                     yield processed
-                    batch = []
+                    del processed
+                    del batch
+                    gc.collect()
 
 
 if __name__ == "__main__":

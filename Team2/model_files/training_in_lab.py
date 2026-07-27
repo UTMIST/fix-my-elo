@@ -16,8 +16,9 @@ if __name__ == "__main__":
             f"Using device: {torch.cuda.get_device_name(torch.cuda.current_device())}"
         )
     os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-    MAX_GAMES = 10000000
-    GAMES_PER_BATCH = 10000
+    MAX_GAMES = 100000
+    MAX_VALIDATION_GAMES = 100 # must be at least GAMES_PER_BATCH
+    GAMES_PER_BATCH = 10
     model = SLPolicyValueNetwork().to(device)
     # model.load_state_dict(torch.load("sl_policy_network_KC.pth", map_location=torch.device("cpu")))
     policy_criterion = nn.CrossEntropyLoss()  # softmax regression loss function
@@ -27,6 +28,41 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=0.1e-4)
 
     model.train()
+
+    train_to_test_ratio = 0.9
+    batch_size = 2048
+
+    dataset = PGN_Dataset(
+        "Team2/pgn_files/LumbrasGigaBase_OTB_ELO2400.pgn",
+        max_games=MAX_GAMES,
+        batchsize=GAMES_PER_BATCH,
+    )
+    dataset_generator = dataset.generate_dataset(num_workers=4, chunksize=256)
+    print(f"loaded {dataset.length} games")
+    # approximate number of batches to be allocated for validation
+    # do this before so validation set stays the same
+    num_validation_batches = math.ceil(
+        dataset.length // dataset.batchsize * (1 - train_to_test_ratio)
+    )
+    # cap the validation set size
+    if num_validation_batches * dataset.batchsize > MAX_VALIDATION_GAMES:
+        num_validation_batches = MAX_VALIDATION_GAMES // GAMES_PER_BATCH
+    print(
+        f"using {num_validation_batches} batches for validation, equal to {num_validation_batches*dataset.batchsize} games"
+    )
+    test_data = []
+    for _ in range(num_validation_batches):
+        try:
+            test_data += next(dataset_generator)
+        except StopIteration:
+            raise Exception(
+                "your GAMES_PER_BATCH could be too large. Aim for 10:1 ratio for dataset.length:dataset.batchsize."
+            )
+
+    X_valid = torch.stack([board for board, move, winner in test_data])
+    t_valid = torch.tensor([(move, winner) for board, move, winner in test_data])
+    valid_dataset = TensorDataset(X_valid, t_valid)
+    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
 
     # checkpoint = torch.load("checkpoint2.pth")
     # model.load_state_dict(checkpoint["model"])
@@ -39,36 +75,6 @@ if __name__ == "__main__":
     print(f"Resuming from epoch {start_epoch}, batch {start_batch}")
     epochs = 100
     for epoch in range(epochs):
-        train_to_test_ratio = 0.9
-        batch_size = 2048
-        dataset = PGN_Dataset(
-            "Team2/pgn_files/LumbrasGigaBase_OTB_ELO2400.pgn",
-            max_games=MAX_GAMES,
-            batchsize=GAMES_PER_BATCH,
-        )
-        dataset_generator = dataset.generate_dataset(num_workers=4, chunksize=256)
-        print(f"loaded {dataset.length} games")
-        # approximate number of batches to be allocated for validation
-        # do this before so validation set stays the same
-        num_validation_batches = math.ceil(
-            dataset.length // dataset.batchsize * (1 - train_to_test_ratio)
-        )
-        print(f"using {num_validation_batches} batches for validation, equal to {num_validation_batches*dataset.batchsize} games")
-        test_data = []
-        for _ in range(num_validation_batches):
-            try:
-                test_data += next(dataset_generator)
-            except StopIteration:
-                raise Exception(
-                    "your GAMES_PER_BATCH could be too large. Aim for 10:1 ratio for dataset.length:dataset.batchsize."
-                )
-
-        X_valid = torch.stack([board for board, move, winner in test_data])
-        t_valid = torch.tensor([(move, winner) for board, move, winner in test_data])
-        valid_dataset = TensorDataset(X_valid, t_valid)
-        valid_dataloader = DataLoader(
-            valid_dataset, batch_size=batch_size, shuffle=False
-        )
 
         batch_idx = 0
         # while there is another batch, pull it
@@ -76,7 +82,10 @@ if __name__ == "__main__":
             try:
                 batch = next(dataset_generator)
             except StopIteration:
-                # when out of batches, quit epoch
+                # when out of batches, reset the generator and quit epoch
+                dataset_generator = dataset.generate_dataset(
+                    num_workers=4, chunksize=256
+                )
                 break
             batch_idx += 1
             train_size = int(len(batch))
