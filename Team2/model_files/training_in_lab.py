@@ -1,12 +1,15 @@
+import csv
+import math
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import os
 from torch.utils.data import DataLoader, TensorDataset
+
 from Team2.dataset import PGN_Dataset
 from Team2.model_files.SLPolicyValueGPU import SLPolicyValueNetwork
-import math
 
 if __name__ == "__main__":
 
@@ -16,9 +19,12 @@ if __name__ == "__main__":
             f"Using device: {torch.cuda.get_device_name(torch.cuda.current_device())}"
         )
     os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-    MAX_GAMES = 100000
-    MAX_VALIDATION_GAMES = 30000 # must be at least GAMES_PER_BATCH
-    GAMES_PER_BATCH = 30000
+    # MAX_GAMES = 1000000
+    # MAX_VALIDATION_GAMES = 30000 # must be at least GAMES_PER_BATCH
+    # GAMES_PER_BATCH = 30000
+    MAX_GAMES = 10000
+    MAX_VALIDATION_GAMES = 1000 # must be at least GAMES_PER_BATCH
+    GAMES_PER_BATCH = 1000
     NUM_WORKERS = 20
     CHUNKSIZE = 1024
     model = SLPolicyValueNetwork().to(device)
@@ -75,10 +81,18 @@ if __name__ == "__main__":
     start_batch = 0
 
     print(f"Resuming from epoch {start_epoch}, batch {start_batch}")
+    log_path = os.path.join(os.path.dirname(__file__), "lab_training_log.csv")
+    if not os.path.exists(log_path):
+        with open(log_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["epoch", "avg_train_loss", "avg_val_loss"])
+
     epochs = 100
     for epoch in range(epochs):
 
         batch_idx = 0
+        train_loss_sum = 0.0
+        train_batches = 0
         # while there is another batch, pull it
         while True:
             try:
@@ -120,21 +134,25 @@ if __name__ == "__main__":
                 loss.backward()  # calculate gradient
                 optimizer.step()  # update parameters
 
-                print(f"epoch {epoch} batch {batch_idx} batch_idx: {index} value loss: {value_loss} policy loss: {policy_loss} total: {loss}")
+                print(f"epoch {epoch} batch {batch_idx} progress: {index/len(train_dataloader)*100:.2f}% value loss: {value_loss:.2f} policy loss: {policy_loss:.2f} total: {loss:.2f}")
+                train_loss_sum += loss.item()
+                train_batches += 1
                 batch_idx += 1
 
-            # torch.save(
-            #     {
-            #         "model": model.state_dict(),
-            #         "optimizer": optimizer.state_dict(),
-            #         "epoch": epoch,
-            #         "batch": batch_idx,
-            #     },
-            #     "lab_trained.pth",
-            # )
-            # print("model checkpoint saved")
+        torch.save(
+            {
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "epoch": epoch,
+                "batch": batch_idx,
+            },
+            "lab_trained.pth",
+        )
+        print("model checkpoint saved")
 
             # check validation accuracy to see if general patterns are being learnt
+
+        avg_train_loss = train_loss_sum / train_batches if train_batches else 0.0
 
         model.eval()
         test_loss = 0
@@ -156,10 +174,17 @@ if __name__ == "__main__":
                 loss = policy_loss + value_loss
                 test_loss += loss
 
+        avg_val_loss = test_loss / len(valid_dataloader)
         print(
-            "epoch: {}, valid loss: {:.6f}".format(
+            "epoch: {}, avg train loss: {:.6f}, avg valid loss: {:.6f}".format(
                 epoch + 1,
-                test_loss / len(valid_dataloader),
+                avg_train_loss,
+                avg_val_loss,
             )
         )
+
+        with open(log_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([epoch + 1, avg_train_loss, avg_val_loss])
+
         model.train()
