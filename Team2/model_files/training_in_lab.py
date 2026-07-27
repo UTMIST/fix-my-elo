@@ -14,10 +14,6 @@ from Team2.model_files.SLPolicyValueGPU import SLPolicyValueNetwork
 if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if torch.cuda.is_available():
-        print(
-            f"Using device: {torch.cuda.get_device_name(torch.cuda.current_device())}"
-        )
     os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
     # MAX_GAMES = 1000000
     # MAX_VALIDATION_GAMES = 30000 # must be at least GAMES_PER_BATCH
@@ -46,7 +42,6 @@ if __name__ == "__main__":
         batchsize=GAMES_PER_BATCH,
     )
     dataset_generator = dataset.generate_dataset(num_workers=NUM_WORKERS, chunksize=CHUNKSIZE)
-    print(f"loaded {dataset.length} games")
     # approximate number of batches to be allocated for validation
     # do this before so validation set stays the same
     num_validation_batches = math.ceil(
@@ -55,9 +50,8 @@ if __name__ == "__main__":
     # cap the validation set size
     if num_validation_batches * dataset.batchsize > MAX_VALIDATION_GAMES:
         num_validation_batches = MAX_VALIDATION_GAMES // GAMES_PER_BATCH
-    print(
-        f"using {num_validation_batches} batches for validation, equal to {num_validation_batches*dataset.batchsize} games"
-    )
+    # chunks the generator yields on a full pass, used for epoch progress
+    total_chunks = math.ceil(dataset.length / dataset.batchsize)
     test_data = []
     for _ in range(num_validation_batches):
         try:
@@ -80,7 +74,6 @@ if __name__ == "__main__":
     start_epoch = 0
     start_batch = 0
 
-    print(f"Resuming from epoch {start_epoch}, batch {start_batch}")
     log_path = os.path.join(os.path.dirname(__file__), "lab_training_log.csv")
     if not os.path.exists(log_path):
         with open(log_path, "w", newline="") as f:
@@ -91,6 +84,10 @@ if __name__ == "__main__":
     for epoch in range(epochs):
 
         batch_idx = 0
+        chunk_idx = 0
+        # the first epoch shares its generator with the validation split, so it
+        # sees that many fewer chunks
+        chunks_this_epoch = total_chunks - num_validation_batches if epoch == 0 else total_chunks
         train_loss_sum = 0.0
         train_batches = 0
         # while there is another batch, pull it
@@ -115,8 +112,12 @@ if __name__ == "__main__":
             train_dataloader = DataLoader(
                 train_dataset, batch_size=batch_size, shuffle=True, num_workers=NUM_WORKERS
             )
-            print(f"epoch: {epoch} batch: {batch_idx}")
-
+            num_inner_batches = len(train_dataloader)
+            chunk_idx += 1
+            print(
+                f"epoch {epoch + 1}/{epochs} progress: chunk {chunk_idx}/{chunks_this_epoch} "
+                f"({chunk_idx / chunks_this_epoch * 100:.1f}%)"
+            )
             for index, (data, target) in enumerate(train_dataloader):
                 data = data.to(device)
                 batch_move_target = target[:, 0].to(device)
@@ -134,7 +135,10 @@ if __name__ == "__main__":
                 loss.backward()  # calculate gradient
                 optimizer.step()  # update parameters
 
-                print(f"epoch {epoch} batch {batch_idx} progress: {index/len(train_dataloader)*100:.2f}% value loss: {value_loss:.2f} policy loss: {policy_loss:.2f} total: {loss:.2f}")
+                print(
+                    f"epoch {epoch + 1} batch {index + 1}/{num_inner_batches} "
+                    f"({(index + 1) / num_inner_batches * 100:.1f}%) loss: {loss.item():.4f}"
+                )
                 train_loss_sum += loss.item()
                 train_batches += 1
                 batch_idx += 1
@@ -148,10 +152,8 @@ if __name__ == "__main__":
             },
             "lab_trained.pth",
         )
-        print("model checkpoint saved")
 
-            # check validation accuracy to see if general patterns are being learnt
-
+        # check validation accuracy to see if general patterns are being learnt
         avg_train_loss = train_loss_sum / train_batches if train_batches else 0.0
 
         model.eval()
