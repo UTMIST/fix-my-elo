@@ -17,8 +17,10 @@ if __name__ == "__main__":
         )
     os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
     MAX_GAMES = 100000
-    MAX_VALIDATION_GAMES = 100 # must be at least GAMES_PER_BATCH
-    GAMES_PER_BATCH = 10
+    MAX_VALIDATION_GAMES = 30000 # must be at least GAMES_PER_BATCH
+    GAMES_PER_BATCH = 30000
+    NUM_WORKERS = 20
+    CHUNKSIZE = 1024
     model = SLPolicyValueNetwork().to(device)
     # model.load_state_dict(torch.load("sl_policy_network_KC.pth", map_location=torch.device("cpu")))
     policy_criterion = nn.CrossEntropyLoss()  # softmax regression loss function
@@ -30,14 +32,14 @@ if __name__ == "__main__":
     model.train()
 
     train_to_test_ratio = 0.9
-    batch_size = 2048
+    batch_size = 4096
 
     dataset = PGN_Dataset(
-        "Team2/pgn_files/LumbrasGigaBase_OTB_ELO2400.pgn",
+        "Team2/pgn_files/LumbrasGigaBase_OTB_Elite_ELO2400.pgn",
         max_games=MAX_GAMES,
         batchsize=GAMES_PER_BATCH,
     )
-    dataset_generator = dataset.generate_dataset(num_workers=4, chunksize=256)
+    dataset_generator = dataset.generate_dataset(num_workers=NUM_WORKERS, chunksize=CHUNKSIZE)
     print(f"loaded {dataset.length} games")
     # approximate number of batches to be allocated for validation
     # do this before so validation set stays the same
@@ -62,7 +64,7 @@ if __name__ == "__main__":
     X_valid = torch.stack([board for board, move, winner in test_data])
     t_valid = torch.tensor([(move, winner) for board, move, winner in test_data])
     valid_dataset = TensorDataset(X_valid, t_valid)
-    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
+    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=NUM_WORKERS)
 
     # checkpoint = torch.load("checkpoint2.pth")
     # model.load_state_dict(checkpoint["model"])
@@ -84,10 +86,9 @@ if __name__ == "__main__":
             except StopIteration:
                 # when out of batches, reset the generator and quit epoch
                 dataset_generator = dataset.generate_dataset(
-                    num_workers=4, chunksize=256
+                    num_workers=NUM_WORKERS, chunksize=CHUNKSIZE
                 )
                 break
-            batch_idx += 1
             train_size = int(len(batch))
             train_data = batch
             X_train = torch.stack(
@@ -98,26 +99,29 @@ if __name__ == "__main__":
             )  # (N, 2)
             train_dataset = TensorDataset(X_train, t_train)
             train_dataloader = DataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True
+                train_dataset, batch_size=batch_size, shuffle=True, num_workers=NUM_WORKERS
             )
             print(f"epoch: {epoch} batch: {batch_idx}")
 
-            # for batch_idx, (data, target) in enumerate(train_dataloader):
-            #     data = data.to(device)
-            #     batch_move_target = target[:, 0].to(device)
-            #     batch_val_target = target[:, 1].float().unsqueeze(1).to(device)
+            for index, (data, target) in enumerate(train_dataloader):
+                data = data.to(device)
+                batch_move_target = target[:, 0].to(device)
+                batch_val_target = target[:, 1].float().unsqueeze(1).to(device)
 
-            #     pred_policy, pred_val = model(data)  # calculate predictions for this batch
-            #     policy_loss = policy_criterion(
-            #         pred_policy, batch_move_target
-            #     )  # calculate loss for policy
-            #     value_loss = value_criterion(
-            #         pred_val, batch_val_target
-            #     )  # calculate loss for value
-            #     loss = policy_loss + value_loss
-            #     optimizer.zero_grad()  # reset gradient
-            #     loss.backward()  # calculate gradient
-            #     optimizer.step()  # update parameters
+                pred_policy, pred_val = model(data)  # calculate predictions for this batch
+                policy_loss = policy_criterion(
+                    pred_policy, batch_move_target
+                )  # calculate loss for policy
+                value_loss = value_criterion(
+                    pred_val, batch_val_target
+                )  # calculate loss for value
+                loss = policy_loss + value_loss
+                optimizer.zero_grad()  # reset gradient
+                loss.backward()  # calculate gradient
+                optimizer.step()  # update parameters
+
+                print(f"epoch {epoch} batch {batch_idx} batch_idx: {index} value loss: {value_loss} policy loss: {policy_loss} total: {loss}")
+                batch_idx += 1
 
             # torch.save(
             #     {
@@ -132,30 +136,30 @@ if __name__ == "__main__":
 
             # check validation accuracy to see if general patterns are being learnt
 
-        # model.eval()
-        # test_loss = 0
-        # correct = 0
+        model.eval()
+        test_loss = 0
+        correct = 0
 
-        # with torch.no_grad():
-        #     for batch_idx, (data, target) in enumerate(valid_dataloader):
-        #         data = data.to(device)
-        #         batch_move_target = target[:, 0].to(device)
-        #         batch_val_target = target[:, 1].float().unsqueeze(1).to(device)
+        with torch.no_grad():
+            for batch_idx, (data, target) in enumerate(valid_dataloader):
+                data = data.to(device)
+                batch_move_target = target[:, 0].to(device)
+                batch_val_target = target[:, 1].float().unsqueeze(1).to(device)
 
-        #         pred_policy, pred_val = model(data)
-        #         policy_loss = policy_criterion(
-        #             pred_policy, batch_move_target
-        #         )  # calculate loss for policy
-        #         value_loss = value_criterion(
-        #             pred_val, batch_val_target
-        #         )  # calculate loss for value
-        #         loss = policy_loss + value_loss
-        #         test_loss += loss
+                pred_policy, pred_val = model(data)
+                policy_loss = policy_criterion(
+                    pred_policy, batch_move_target
+                )  # calculate loss for policy
+                value_loss = value_criterion(
+                    pred_val, batch_val_target
+                )  # calculate loss for value
+                loss = policy_loss + value_loss
+                test_loss += loss
 
-        # print(
-        #     "epoch: {}, valid loss: {:.6f}".format(
-        #         epoch + 1,
-        #         test_loss / len(valid_dataloader),
-        #     )
-        # )
-        # model.train()
+        print(
+            "epoch: {}, valid loss: {:.6f}".format(
+                epoch + 1,
+                test_loss / len(valid_dataloader),
+            )
+        )
+        model.train()

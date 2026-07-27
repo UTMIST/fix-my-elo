@@ -240,7 +240,7 @@ def extraction_worker(data: tuple[str, str, str]):
     move_tensor = uci_to_tensor(move)
     move = move_tensor_to_label(move_tensor)
 
-    return (board, move, winner)
+    return (board.numpy(), move, winner)
 
 
 def extract_from_fen_without_multiprocessing(data) -> list[torch.Tensor, torch.Tensor]:

@@ -9,6 +9,7 @@ from Team2.data_processing import (
 import chess.pgn
 import time
 import math
+import torch
 
 
 def worker(data: tuple[str, str, str]):
@@ -78,9 +79,10 @@ class PGN_Dataset:
                 if count % self.batchsize == 0 or count == self.max_games:
                     processed = extract_from_fen(batch, num_workers=num_workers, chunksize=chunksize)
                     # processed = extract_from_fen_without_multiprocessing(batch)
+                    processed = [(torch.from_numpy(board), move, winner) for board, move, winner in processed]
                     yield processed
                     del processed
-                    del batch
+                    batch = []
                     gc.collect()
 
 
