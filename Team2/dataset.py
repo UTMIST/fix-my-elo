@@ -91,11 +91,12 @@ class PGN_Dataset:
 
                 count += 1
                 if count % self.batchsize == 0 or count == self.max_games:
-                    processed = extract_from_fen(batch, num_workers=num_workers, chunksize=chunksize)
-                    # processed = extract_from_fen_without_multiprocessing(batch)
-                    processed = [(torch.from_numpy(board), move, winner) for board, move, winner in processed]
-                    yield processed
-                    del processed
+                    # yields (boards int8 (N,13,8,8), targets int64 (N,2)).
+                    boards, targets = extract_from_fen(
+                        batch, num_workers=num_workers, chunksize=chunksize
+                    )
+                    yield torch.from_numpy(boards), torch.from_numpy(targets)
+                    del boards, targets
                     batch = []
                     gc.collect()
 

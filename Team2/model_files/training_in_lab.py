@@ -38,7 +38,7 @@ if __name__ == "__main__":
     batch_size = 4096
 
     dataset = PGN_Dataset(
-        "Team2/pgn_files/LumbrasGigaBase_OTB_Elite_ELO2400.pgn",
+        "Team2/pgn_files/LumbrasGigaBase_OTB_ELO2400.pgn",
         max_games=MAX_GAMES,
         batchsize=GAMES_PER_BATCH,
     )
@@ -53,19 +53,25 @@ if __name__ == "__main__":
         num_validation_batches = MAX_VALIDATION_GAMES // GAMES_PER_BATCH
     # chunks the generator yields on a full pass, used for epoch progress
     total_chunks = math.ceil(dataset.length / dataset.batchsize)
-    test_data = []
+    valid_boards = []
+    valid_targets = []
     for _ in range(num_validation_batches):
         try:
-            test_data += next(dataset_generator)
+            boards, targets = next(dataset_generator)
         except StopIteration:
             raise Exception(
                 "your GAMES_PER_BATCH could be too large. Aim for 10:1 ratio for dataset.length:dataset.batchsize."
             )
+        valid_boards.append(boards)
+        valid_targets.append(targets)
 
-    X_valid = torch.stack([board for board, move, winner in test_data])
-    t_valid = torch.tensor([(move, winner) for board, move, winner in test_data])
+    X_valid = torch.cat(valid_boards)
+    t_valid = torch.cat(valid_targets)
+    del valid_boards, valid_targets
     valid_dataset = TensorDataset(X_valid, t_valid)
-    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=NUM_WORKERS)
+    # num_workers=0: the dataset is already resident in this process, so worker
+    # processes only add forks of a large parent and buy no I/O overlap
+    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
 
     # checkpoint = torch.load("checkpoint2.pth")
     # model.load_state_dict(checkpoint["model"])
@@ -97,7 +103,7 @@ if __name__ == "__main__":
         # while there is another batch, pull it
         while True:
             try:
-                batch = next(dataset_generator)
+                X_train, t_train = next(dataset_generator)
             except StopIteration:
                 # when out of batches, reset the generator and quit epoch.
                 # skip past the validation chunks so they never get trained on
@@ -107,17 +113,10 @@ if __name__ == "__main__":
                     skip_chunks=num_validation_batches,
                 )
                 break
-            train_size = int(len(batch))
-            train_data = batch
-            X_train = torch.stack(
-                [board for board, move, winner in train_data]
-            )  # (N, 8, 8, 12)
-            t_train = torch.tensor(
-                [(move, winner) for board, move, winner in train_data]
-            )  # (N, 2)
+            # X_train is (N, 13, 8, 8) int8, t_train is (N, 2) int64 [move, winner]
             train_dataset = TensorDataset(X_train, t_train)
             train_dataloader = DataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, num_workers=NUM_WORKERS
+                train_dataset, batch_size=batch_size, shuffle=True, num_workers=0
             )
             num_inner_batches = len(train_dataloader)
             chunk_idx += 1
@@ -127,7 +126,8 @@ if __name__ == "__main__":
                 f"elapsed: {time.time() - epoch_start:.1f}s"
             )
             for index, (data, target) in enumerate(train_dataloader):
-                data = data.to(device)
+                # stored int8 to keep the chunk small, cast per minibatch on device
+                data = data.to(device).float()
                 batch_move_target = target[:, 0].to(device)
                 batch_val_target = target[:, 1].float().unsqueeze(1).to(device)
 
@@ -152,6 +152,10 @@ if __name__ == "__main__":
                 train_batches += 1
                 batch_idx += 1
 
+            # release this chunk before pulling the next, so peak memory stays
+            # at one chunk rather than two
+            del X_train, t_train, train_dataset, train_dataloader
+
         torch.save(
             {
                 "model": model.state_dict(),
@@ -171,7 +175,7 @@ if __name__ == "__main__":
 
         with torch.no_grad():
             for batch_idx, (data, target) in enumerate(valid_dataloader):
-                data = data.to(device)
+                data = data.to(device).float()
                 batch_move_target = target[:, 0].to(device)
                 batch_val_target = target[:, 1].float().unsqueeze(1).to(device)
 
@@ -183,7 +187,9 @@ if __name__ == "__main__":
                     pred_val, batch_val_target
                 )  # calculate loss for value
                 loss = policy_loss + value_loss
-                test_loss += loss
+                # .item() so avg_val_loss is a float. accumulating the tensor
+                # made the csv column read "tensor(10.8533)" instead of a number
+                test_loss += loss.item()
 
         avg_val_loss = test_loss / len(valid_dataloader)
         epoch_time = time.time() - epoch_start

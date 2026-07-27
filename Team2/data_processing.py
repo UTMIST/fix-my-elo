@@ -1,5 +1,6 @@
 import chess
 import chess.pgn
+import numpy as np
 import torch
 import string
 from multiprocessing import Pool
@@ -219,14 +220,22 @@ def generate_dataset_from_pgn(
 
 
 def extract_from_fen(data, num_workers, chunksize):
-    dataset = []
+    """Returns (boards int8 (N,13,8,8), targets int64 (N,2) as [move, winner]).
+    """
+    n = len(data)
+    boards = np.empty((n, 13, 8, 8), dtype=np.int8)
+    targets = np.empty((n, 2), dtype=np.int64)
 
     with Pool(processes=num_workers) as pool:
         # adjust chunksize per machine
-        for d in pool.imap(extraction_worker, data, chunksize=chunksize):
-            dataset.append(d)
+        for i, (board, move, winner) in enumerate(
+            pool.imap(extraction_worker, data, chunksize=chunksize)
+        ):
+            boards[i] = board
+            targets[i, 0] = move
+            targets[i, 1] = winner
 
-    return dataset
+    return boards, targets
 
 
 def extraction_worker(data: tuple[str, str, str]):
@@ -240,20 +249,27 @@ def extraction_worker(data: tuple[str, str, str]):
     move_tensor = uci_to_tensor(move)
     move = move_tensor_to_label(move_tensor)
 
-    return (board.numpy(), move, winner)
+    return (board.to(torch.int8).numpy(), move, winner)
 
 
-def extract_from_fen_without_multiprocessing(data) -> list[torch.Tensor, torch.Tensor]:
+def extract_from_fen_without_multiprocessing(data):
+    """Serial equivalent of extract_from_fen, same return shape.
+
+    Returns (boards int8 (N,13,8,8), targets int64 (N,2) as [move, winner]).
+    Kept shape-compatible so it can be swapped in to rule the Pool out when
+    debugging a multiprocessing failure.
     """
-    Takes in a pgn file path and returns a list of [torch.Tensor(12,8,8), torch.Tensor(2,8,8,5)].
-    First tensor is the board state before the move.
-    Second tensor is the move made from that position as encoded following uci_to_tensor.
-    """
-    dataset = []
-    for d in data:
-        dataset.append(extraction_worker(d))
+    n = len(data)
+    boards = np.empty((n, 13, 8, 8), dtype=np.int8)
+    targets = np.empty((n, 2), dtype=np.int64)
 
-    return dataset
+    for i, d in enumerate(data):
+        board, move, winner = extraction_worker(d)
+        boards[i] = board
+        targets[i, 0] = move
+        targets[i, 1] = winner
+
+    return boards, targets
 
 
 if __name__ == "__main__":
