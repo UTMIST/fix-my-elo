@@ -58,6 +58,8 @@ class PGN_Dataset:
                 if game is None or count == max_games:
                     break
                 count += 1
+                if count % 1000 == 0:
+                    print(f"counted {count} games")
         self.length = min(count, max_games)
 
     def generate_dataset(self, num_workers, chunksize):
