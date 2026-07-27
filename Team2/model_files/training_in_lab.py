@@ -1,6 +1,7 @@
 import csv
 import math
 import os
+import time
 
 import torch
 import torch.nn as nn
@@ -78,16 +79,19 @@ if __name__ == "__main__":
     if not os.path.exists(log_path):
         with open(log_path, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["epoch", "avg_train_loss", "avg_val_loss"])
+            writer.writerow(
+                ["epoch", "avg_train_loss", "avg_val_loss", "epoch_time_s", "total_time_s"]
+            )
 
     epochs = 100
+    run_start = time.time()
     for epoch in range(epochs):
 
+        epoch_start = time.time()
         batch_idx = 0
         chunk_idx = 0
-        # the first epoch shares its generator with the validation split, so it
-        # sees that many fewer chunks
-        chunks_this_epoch = total_chunks - num_validation_batches if epoch == 0 else total_chunks
+        # every epoch skips the validation chunks, so they all see the same count
+        chunks_this_epoch = total_chunks - num_validation_batches
         train_loss_sum = 0.0
         train_batches = 0
         # while there is another batch, pull it
@@ -95,9 +99,12 @@ if __name__ == "__main__":
             try:
                 batch = next(dataset_generator)
             except StopIteration:
-                # when out of batches, reset the generator and quit epoch
+                # when out of batches, reset the generator and quit epoch.
+                # skip past the validation chunks so they never get trained on
                 dataset_generator = dataset.generate_dataset(
-                    num_workers=NUM_WORKERS, chunksize=CHUNKSIZE
+                    num_workers=NUM_WORKERS,
+                    chunksize=CHUNKSIZE,
+                    skip_chunks=num_validation_batches,
                 )
                 break
             train_size = int(len(batch))
@@ -116,7 +123,8 @@ if __name__ == "__main__":
             chunk_idx += 1
             print(
                 f"epoch {epoch + 1}/{epochs} progress: chunk {chunk_idx}/{chunks_this_epoch} "
-                f"({chunk_idx / chunks_this_epoch * 100:.1f}%)"
+                f"({chunk_idx / chunks_this_epoch * 100:.1f}%) "
+                f"elapsed: {time.time() - epoch_start:.1f}s"
             )
             for index, (data, target) in enumerate(train_dataloader):
                 data = data.to(device)
@@ -135,10 +143,11 @@ if __name__ == "__main__":
                 loss.backward()  # calculate gradient
                 optimizer.step()  # update parameters
 
-                print(
-                    f"epoch {epoch + 1} batch {index + 1}/{num_inner_batches} "
-                    f"({(index + 1) / num_inner_batches * 100:.1f}%) loss: {loss.item():.4f}"
-                )
+                # print(
+                #     f"epoch {epoch + 1} batch {index + 1}/{num_inner_batches} "
+                #     f"({(index + 1) / num_inner_batches * 100:.1f}%) loss: {loss.item():.4f} "
+                #     f"elapsed: {time.time() - epoch_start:.1f}s"
+                # )
                 train_loss_sum += loss.item()
                 train_batches += 1
                 batch_idx += 1
@@ -177,16 +186,28 @@ if __name__ == "__main__":
                 test_loss += loss
 
         avg_val_loss = test_loss / len(valid_dataloader)
+        epoch_time = time.time() - epoch_start
+        total_time = time.time() - run_start
         print(
-            "epoch: {}, avg train loss: {:.6f}, avg valid loss: {:.6f}".format(
+            "epoch: {}, avg train loss: {:.6f}, avg valid loss: {:.6f}, epoch time: {:.1f}s, total time: {:.1f}s".format(
                 epoch + 1,
                 avg_train_loss,
                 avg_val_loss,
+                epoch_time,
+                total_time,
             )
         )
 
         with open(log_path, "a", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([epoch + 1, avg_train_loss, avg_val_loss])
+            writer.writerow(
+                [
+                    epoch + 1,
+                    avg_train_loss,
+                    avg_val_loss,
+                    round(epoch_time, 1),
+                    round(total_time, 1),
+                ]
+            )
 
         model.train()

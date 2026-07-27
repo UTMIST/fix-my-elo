@@ -62,13 +62,25 @@ class PGN_Dataset:
                     print(f"counted {count} games")
         self.length = min(count, max_games)
 
-    def generate_dataset(self, num_workers, chunksize):
+    def generate_dataset(self, num_workers, chunksize, skip_chunks=0):
         # while count <= max_games
         #   load games_per_batch games from path using chess.pgn.readGame
         #   process them all in parallel with helpers to return a batch
         #   yield that batch
-        count = 0
+        # skip_chunks drops the first N chunks of the pass, so callers can keep
+        # a held-out split (the validation chunks) out of training on every
+        # reset. reads are sequential and imap preserves order, so chunk k is
+        # the same games on every pass. skipped games still count toward
+        # max_games, which keeps the chunk boundaries identical to an unskipped
+        # pass
+        skipped_games = min(skip_chunks * self.batchsize, self.max_games)
+        count = skipped_games
         with open(self.path) as f:
+            for _ in range(skipped_games):
+                # SkipVisitor walks the game without parsing moves, so this
+                # costs a file scan rather than a board replay
+                if not chess.pgn.skip_game(f):
+                    break
             batch = []
             while count <= self.max_games:
                 game = chess.pgn.read_game(f)
