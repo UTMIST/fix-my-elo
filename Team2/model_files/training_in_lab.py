@@ -107,8 +107,12 @@ if __name__ == "__main__":
         chunks_this_epoch = total_chunks - num_validation_batches
         train_loss_sum = 0.0
         train_batches = 0
+        # split the epoch into time spent waiting on data vs time in the model
+        data_time_sum = 0.0
+        compute_time_sum = 0.0
         # while there is another batch, pull it
         while True:
+            fetch_start = time.time()
             try:
                 X_train, t_train = next(dataset_generator)
             except StopIteration:
@@ -121,20 +125,30 @@ if __name__ == "__main__":
                 )
                 print(f"[load] generator reset, skipping {num_validation_batches} valid chunks")
                 break
-            print(f"[load] train chunk {chunk_idx + 1}: {X_train.shape[0]} positions")
+            fetch_time = time.time() - fetch_start
+            data_time_sum += fetch_time
+            print(
+                f"[load] train chunk {chunk_idx + 1}: {X_train.shape[0]:,} positions, "
+                f"waited {fetch_time:.1f}s on the generator"
+            )
             # X_train is (N, 13, 8, 8) int8, t_train is (N, 2) int64 [move, winner]
+            build_start = time.time()
             train_dataset = TensorDataset(X_train, t_train)
             train_dataloader = DataLoader(
                 train_dataset, batch_size=batch_size, shuffle=True, num_workers=0
             )
             num_inner_batches = len(train_dataloader)
-            print(f"[load] train dataloader ready: {num_inner_batches} minibatches")
+            print(
+                f"[load] train dataloader ready: {num_inner_batches} minibatches, "
+                f"built in {time.time() - build_start:.3f}s"
+            )
             chunk_idx += 1
             print(
                 f"epoch {epoch + 1}/{epochs} progress: chunk {chunk_idx}/{chunks_this_epoch} "
                 f"({chunk_idx / chunks_this_epoch * 100:.1f}%) "
                 f"elapsed: {time.time() - epoch_start:.1f}s"
             )
+            compute_start = time.time()
             for index, (data, target) in enumerate(train_dataloader):
                 # stored int8 to keep the chunk small, cast per minibatch on device
                 data = data.to(device).float()
@@ -162,6 +176,15 @@ if __name__ == "__main__":
                 train_batches += 1
                 batch_idx += 1
 
+            compute_time = time.time() - compute_start
+            compute_time_sum += compute_time
+            chunk_total = fetch_time + compute_time
+            print(
+                f"[time] chunk {chunk_idx}: data {fetch_time:6.1f}s | "
+                f"compute {compute_time:6.1f}s | "
+                f"{fetch_time / max(chunk_total, 1e-9) * 100:.0f}% of the chunk was spent waiting on data"
+            )
+
             # release this chunk before pulling the next, so peak memory stays
             # at one chunk rather than two
             del X_train, t_train, train_dataset, train_dataloader
@@ -182,6 +205,7 @@ if __name__ == "__main__":
         model.eval()
         test_loss = 0
         correct = 0
+        valid_start = time.time()
 
         with torch.no_grad():
             for batch_idx, (data, target) in enumerate(valid_dataloader):
@@ -201,6 +225,7 @@ if __name__ == "__main__":
                 # made the csv column read "tensor(10.8533)" instead of a number
                 test_loss += loss.item()
 
+        valid_time = time.time() - valid_start
         avg_val_loss = test_loss / len(valid_dataloader)
         epoch_time = time.time() - epoch_start
         total_time = time.time() - run_start
@@ -211,6 +236,18 @@ if __name__ == "__main__":
                 avg_val_loss,
                 epoch_time,
                 total_time,
+            )
+        )
+        # where the epoch actually went. "other" is checkpoint save plus the
+        # final next() that raises StopIteration and rebuilds the generator
+        other = epoch_time - data_time_sum - compute_time_sum - valid_time
+        print(
+            "  breakdown: data {:.1f}s ({:.0f}%) | compute {:.1f}s ({:.0f}%) | "
+            "valid {:.1f}s ({:.0f}%) | other {:.1f}s".format(
+                data_time_sum, data_time_sum / max(epoch_time, 1e-9) * 100,
+                compute_time_sum, compute_time_sum / max(epoch_time, 1e-9) * 100,
+                valid_time, valid_time / max(epoch_time, 1e-9) * 100,
+                other,
             )
         )
 

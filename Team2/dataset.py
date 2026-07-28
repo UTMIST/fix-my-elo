@@ -8,7 +8,6 @@ from Team2.data_processing import (
 )
 import chess.pgn
 import time
-import math
 import torch
 
 
@@ -82,6 +81,9 @@ class PGN_Dataset:
                     break
             batch = []
             bad_games = 0
+            # split the chunk cost into its two phases: pgn parsing in this
+            # process, then tensor extraction across the worker pool
+            read_start = time.perf_counter()
             while count <= self.max_games:
                 game = chess.pgn.read_game(f)
                 if game is None:
@@ -96,9 +98,20 @@ class PGN_Dataset:
 
                 count += 1
                 if count % self.batchsize == 0 or count == self.max_games:
+                    read_time = time.perf_counter() - read_start
                     # yields (boards int8 (N,13,8,8), targets int64 (N,2)).
+                    extract_start = time.perf_counter()
                     boards, targets = extract_from_fen(
                         batch, num_workers=num_workers, chunksize=chunksize
+                    )
+                    extract_time = time.perf_counter() - extract_start
+
+                    positions = len(batch)
+                    print(
+                        f"  chunk to game {count}: {positions:,} positions | "
+                        f"pgn read {read_time:6.1f}s | extract {extract_time:6.1f}s "
+                        f"({positions/max(extract_time, 1e-9):,.0f} pos/s) | "
+                        f"total {read_time + extract_time:6.1f}s"
                     )
                     if bad_games:
                         print(
@@ -110,6 +123,9 @@ class PGN_Dataset:
                     del boards, targets
                     batch = []
                     gc.collect()
+                    # resumes here on the next next(), so the training time
+                    # between yields is excluded from the next read phase
+                    read_start = time.perf_counter()
 
 
 if __name__ == "__main__":
