@@ -1,4 +1,5 @@
 import gc
+import os
 from Team2.data_processing import (
     fen_to_board_tensor,
     uci_to_tensor,
@@ -54,11 +55,26 @@ class PGN_Dataset:
         # SAN, ~135x faster than read_game and counts identically. a game with
         # invalid SAN is counted by both: read_game records the error and
         # truncates the mainline, it never drops the game
+        # flush on every progress line: stdout is block-buffered when it is
+        # redirected to a file, so without this nothing appears for minutes
+        size_mb = os.path.getsize(path) / 1e6
+        print(
+            f"[scan] counting games in {os.path.basename(path)} ({size_mb:,.0f} MB), "
+            f"capped at {max_games:,}...",
+            flush=True,
+        )
+        scan_start = time.perf_counter()
         count = 0
         with open(path) as f:
             while count < max_games and chess.pgn.skip_game(f):
                 count += 1
         self.length = count
+        scan_time = time.perf_counter() - scan_start
+        print(
+            f"[scan] counted {self.length:,} games in {scan_time:.1f}s "
+            f"({self.length / max(scan_time, 1e-9):,.0f} games/s, skip-parse only)",
+            flush=True,
+        )
 
     def generate_dataset(self, num_workers, chunksize, skip_chunks=0):
         # while count <= max_games
@@ -74,16 +90,33 @@ class PGN_Dataset:
         skipped_games = min(skip_chunks * self.batchsize, self.max_games)
         count = skipped_games
         with open(self.path) as f:
+            skip_start = time.perf_counter()
             for _ in range(skipped_games):
                 # SkipVisitor walks the game without parsing moves, so this
                 # costs a file scan rather than a board replay
                 if not chess.pgn.skip_game(f):
                     break
+            skip_time = time.perf_counter() - skip_start
+            if skipped_games:
+                print(
+                    f"[pass] skipped {skipped_games:,} held-out games in {skip_time:.1f}s"
+                )
+            # totals for the whole pass, so the serial share is visible
+            pass_read = 0.0
+            pass_extract = 0.0
+            pass_positions = 0
             batch = []
             bad_games = 0
             # split the chunk cost into its two phases: pgn parsing in this
             # process, then tensor extraction across the worker pool
             read_start = time.perf_counter()
+            chunk_first_game = count
+            last_report = read_start
+            print(
+                f"  reading games {count + 1:,}-{count + self.batchsize:,} "
+                f"(serial, single core)...",
+                flush=True,
+            )
             while count <= self.max_games:
                 game = chess.pgn.read_game(f)
                 if game is None:
@@ -97,6 +130,21 @@ class PGN_Dataset:
                 batch += game_to_datapoint(game)
 
                 count += 1
+
+                # heartbeat on a time interval, not a game interval, so the
+                # line count stays bounded whatever batchsize is set to
+                now = time.perf_counter()
+                if now - last_report >= 30:
+                    done = count - chunk_first_game
+                    rate = done / max(now - read_start, 1e-9)
+                    print(
+                        f"    ...{done:,}/{self.batchsize:,} games read "
+                        f"({now - read_start:.0f}s elapsed, {rate:,.0f} games/s, "
+                        f"~{(self.batchsize - done) / max(rate, 1e-9):.0f}s left)",
+                        flush=True,
+                    )
+                    last_report = now
+
                 if count % self.batchsize == 0 or count == self.max_games:
                     read_time = time.perf_counter() - read_start
                     # yields (boards int8 (N,13,8,8), targets int64 (N,2)).
@@ -107,9 +155,13 @@ class PGN_Dataset:
                     extract_time = time.perf_counter() - extract_start
 
                     positions = len(batch)
+                    pass_read += read_time
+                    pass_extract += extract_time
+                    pass_positions += positions
                     print(
                         f"  chunk to game {count}: {positions:,} positions | "
-                        f"pgn read {read_time:6.1f}s | extract {extract_time:6.1f}s "
+                        f"pgn read {read_time:6.1f}s (pass total {pass_read:7.1f}s) | "
+                        f"extract {extract_time:6.1f}s "
                         f"({positions/max(extract_time, 1e-9):,.0f} pos/s) | "
                         f"total {read_time + extract_time:6.1f}s"
                     )
@@ -126,6 +178,28 @@ class PGN_Dataset:
                     # resumes here on the next next(), so the training time
                     # between yields is excluded from the next read phase
                     read_start = time.perf_counter()
+                    chunk_first_game = count
+                    last_report = read_start
+                    if count < self.max_games:
+                        print(
+                            f"  reading games {count + 1:,}-"
+                            f"{min(count + self.batchsize, self.max_games):,} "
+                            f"(serial, single core)...",
+                            flush=True,
+                        )
+
+            # the pass is exhausted. read is single-threaded, extract is spread
+            # across num_workers, so the serial share bounds what more workers
+            # could ever buy
+            pass_total = pass_read + pass_extract
+            games_read = count - skipped_games
+            print(
+                f"[pass] done: {games_read:,} games read serially in {pass_read:.1f}s "
+                f"({games_read / max(pass_read, 1e-9):,.0f} games/s) | "
+                f"extract {pass_extract:.1f}s on {num_workers} workers | "
+                f"{pass_positions:,} positions | "
+                f"serial share {pass_read / max(pass_total, 1e-9) * 100:.0f}% of {pass_total:.1f}s"
+            )
 
 
 if __name__ == "__main__":
