@@ -42,7 +42,9 @@ if __name__ == "__main__":
         max_games=MAX_GAMES,
         batchsize=GAMES_PER_BATCH,
     )
+    print(f"[load] dataset ready: {dataset.length} games, batchsize {dataset.batchsize}")
     dataset_generator = dataset.generate_dataset(num_workers=NUM_WORKERS, chunksize=CHUNKSIZE)
+    print(f"[load] generator started: {NUM_WORKERS} workers, chunksize {CHUNKSIZE}")
     # approximate number of batches to be allocated for validation
     # do this before so validation set stays the same
     num_validation_batches = math.ceil(
@@ -51,27 +53,32 @@ if __name__ == "__main__":
     # cap the validation set size
     if num_validation_batches * dataset.batchsize > MAX_VALIDATION_GAMES:
         num_validation_batches = MAX_VALIDATION_GAMES // GAMES_PER_BATCH
+    print(f"using {num_validation_batches} batches ({num_validation_batches*dataset.batchsize} games) for validation")
+    
     # chunks the generator yields on a full pass, used for epoch progress
     total_chunks = math.ceil(dataset.length / dataset.batchsize)
     valid_boards = []
     valid_targets = []
-    for _ in range(num_validation_batches):
+    for i in range(num_validation_batches):
         try:
             boards, targets = next(dataset_generator)
         except StopIteration:
             raise Exception(
                 "your GAMES_PER_BATCH could be too large. Aim for 10:1 ratio for dataset.length:dataset.batchsize."
             )
+        print(f"[load] valid chunk {i + 1}/{num_validation_batches}: {boards.shape[0]} positions")
         valid_boards.append(boards)
         valid_targets.append(targets)
 
     X_valid = torch.cat(valid_boards)
     t_valid = torch.cat(valid_targets)
+    print(f"[load] valid set built: {X_valid.shape[0]} positions")
     del valid_boards, valid_targets
     valid_dataset = TensorDataset(X_valid, t_valid)
     # num_workers=0: the dataset is already resident in this process, so worker
     # processes only add forks of a large parent and buy no I/O overlap
     valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    print(f"[load] valid dataloader ready: {len(valid_dataloader)} minibatches")
 
     # checkpoint = torch.load("checkpoint2.pth")
     # model.load_state_dict(checkpoint["model"])
@@ -112,13 +119,16 @@ if __name__ == "__main__":
                     chunksize=CHUNKSIZE,
                     skip_chunks=num_validation_batches,
                 )
+                print(f"[load] generator reset, skipping {num_validation_batches} valid chunks")
                 break
+            print(f"[load] train chunk {chunk_idx + 1}: {X_train.shape[0]} positions")
             # X_train is (N, 13, 8, 8) int8, t_train is (N, 2) int64 [move, winner]
             train_dataset = TensorDataset(X_train, t_train)
             train_dataloader = DataLoader(
                 train_dataset, batch_size=batch_size, shuffle=True, num_workers=0
             )
             num_inner_batches = len(train_dataloader)
+            print(f"[load] train dataloader ready: {num_inner_batches} minibatches")
             chunk_idx += 1
             print(
                 f"epoch {epoch + 1}/{epochs} progress: chunk {chunk_idx}/{chunks_this_epoch} "
