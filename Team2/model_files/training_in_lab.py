@@ -20,7 +20,7 @@ if __name__ == "__main__":
     # MAX_VALIDATION_GAMES = 30000 # must be at least GAMES_PER_BATCH
     # GAMES_PER_BATCH = 30000
     MAX_GAMES = 10000
-    MAX_VALIDATION_GAMES = 10 # must be at least GAMES_PER_BATCH
+    MAX_VALIDATION_GAMES = 10  # must be at least GAMES_PER_BATCH
     GAMES_PER_BATCH = 10
     NUM_WORKERS = 4
     CHUNKSIZE = 1024
@@ -42,8 +42,12 @@ if __name__ == "__main__":
         max_games=MAX_GAMES,
         batchsize=GAMES_PER_BATCH,
     )
-    print(f"[load] dataset ready: {dataset.length} games, batchsize {dataset.batchsize}")
-    dataset_generator = dataset.generate_dataset(num_workers=NUM_WORKERS, chunksize=CHUNKSIZE)
+    print(
+        f"[load] dataset ready: {dataset.length} games, batchsize {dataset.batchsize}"
+    )
+    dataset_generator = dataset.generate_dataset(
+        num_workers=NUM_WORKERS, chunksize=CHUNKSIZE
+    )
     print(f"[load] generator started: {NUM_WORKERS} workers, chunksize {CHUNKSIZE}")
     # approximate number of batches to be allocated for validation
     # do this before so validation set stays the same
@@ -53,8 +57,10 @@ if __name__ == "__main__":
     # cap the validation set size
     if num_validation_batches * dataset.batchsize > MAX_VALIDATION_GAMES:
         num_validation_batches = MAX_VALIDATION_GAMES // GAMES_PER_BATCH
-    print(f"using {num_validation_batches} batches ({num_validation_batches*dataset.batchsize} games) for validation")
-    
+    print(
+        f"using {num_validation_batches} batches ({num_validation_batches*dataset.batchsize} games) for validation"
+    )
+
     # chunks the generator yields on a full pass, used for epoch progress
     total_chunks = math.ceil(dataset.length / dataset.batchsize)
     valid_boards = []
@@ -66,7 +72,9 @@ if __name__ == "__main__":
             raise Exception(
                 "your GAMES_PER_BATCH could be too large. Aim for 10:1 ratio for dataset.length:dataset.batchsize."
             )
-        print(f"[load] valid chunk {i + 1}/{num_validation_batches}: {boards.shape[0]} positions")
+        print(
+            f"[load] valid chunk {i + 1}/{num_validation_batches}: {boards.shape[0]} positions"
+        )
         valid_boards.append(boards)
         valid_targets.append(targets)
 
@@ -75,9 +83,13 @@ if __name__ == "__main__":
     print(f"[load] valid set built: {X_valid.shape[0]} positions")
     del valid_boards, valid_targets
     valid_dataset = TensorDataset(X_valid, t_valid)
-    
+
     valid_dataloader = DataLoader(
-        valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0, drop_last=True
+        valid_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=0,
+        drop_last=True,
     )
     print(f"[load] valid dataloader ready: {len(valid_dataloader)} minibatches")
 
@@ -103,11 +115,7 @@ if __name__ == "__main__":
         f"device={device} valid_chunks={num_validation_batches}",
         0,
     )
-    # the architecture itself, for the Graphs tab. add_graph traces the model with
-    # a real forward pass, so it needs a sample input of the right shape and dtype:
-    # one board, cast the same way the training loop casts its minibatches. traced
-    # in eval so the trace does not move batchnorm running stats before the first
-    # real step
+
     model.eval()
     writer.add_graph(model, X_valid[:1].to(device).float())
     model.train()
@@ -116,12 +124,10 @@ if __name__ == "__main__":
     epochs = 100
     run_start = time.time()
     checkpoint_path = "lab_trained.pth"
-    # cumulative over the whole run, so a checkpoint says how much data the
-    # weights in it have actually seen
     games_seen = 0
     positions_seen = 0
     chunks_seen = 0
-    
+
     for epoch in range(epochs):
 
         epoch_start = time.time()
@@ -145,7 +151,9 @@ if __name__ == "__main__":
                     chunksize=CHUNKSIZE,
                     skip_chunks=num_validation_batches,
                 )
-                print(f"[load] generator reset, skipping {num_validation_batches} valid chunks")
+                print(
+                    f"[load] generator reset, skipping {num_validation_batches} valid chunks"
+                )
                 break
             fetch_time = time.time() - fetch_start
             data_time_sum += fetch_time
@@ -156,7 +164,7 @@ if __name__ == "__main__":
             # X_train is (N, 13, 8, 8) int8, t_train is (N, 2) int64 [move, winner]
             build_start = time.time()
             train_dataset = TensorDataset(X_train, t_train)
-            
+
             train_dataloader = DataLoader(
                 train_dataset,
                 batch_size=batch_size,
@@ -175,7 +183,7 @@ if __name__ == "__main__":
                 f"({chunk_idx / chunks_this_epoch * 100:.1f}%) "
                 f"elapsed: {time.time() - epoch_start:.1f}s"
             )
-            
+
             chunk_policy_sum = 0.0
             chunk_value_sum = 0.0
             chunk_loss_sum = 0.0
@@ -188,7 +196,9 @@ if __name__ == "__main__":
                 batch_move_target = target[:, 0].to(device)
                 batch_val_target = target[:, 1].float().unsqueeze(1).to(device)
 
-                pred_policy, pred_val = model(data)  # calculate predictions for this batch
+                pred_policy, pred_val = model(
+                    data
+                )  # calculate predictions for this batch
                 policy_loss = policy_criterion(
                     pred_policy, batch_move_target
                 )  # calculate loss for policy
@@ -198,13 +208,6 @@ if __name__ == "__main__":
                 loss = policy_loss + value_loss
                 optimizer.zero_grad()  # reset gradient
                 loss.backward()  # calculate gradient
-                # global l2 norm over every parameter's gradient, taken between
-                # backward and step while the grads are the ones about to be
-                # applied. stacking the per-parameter norms and norming once
-                # gives the same number as flattening all grads into one vector,
-                # without building that vector. a spike here is the cause of a
-                # loss spike, and a collapse toward zero says the net has
-                # stopped learning even while the loss curve still looks flat
                 grad_norm = torch.norm(
                     torch.stack(
                         [
@@ -216,9 +219,6 @@ if __name__ == "__main__":
                     2,
                 )
                 optimizer.step()  # update parameters
-
-                # one .item() per component, then add on the host. loss.item()
-                # would be a third gpu sync for a number we already have
                 policy_l = policy_loss.item()
                 value_l = value_loss.item()
                 total_l = policy_l + value_l
@@ -294,28 +294,22 @@ if __name__ == "__main__":
             writer.add_scalar("time/chunk_data_seconds", fetch_time, chunks_seen)
             writer.add_scalar("time/chunk_compute_seconds", compute_time, chunks_seen)
             writer.add_scalar(
-                "time/chunk_data_fraction", fetch_time / max(chunk_total, 1e-9), chunks_seen
+                "time/chunk_data_fraction",
+                fetch_time / max(chunk_total, 1e-9),
+                chunks_seen,
             )
             writer.add_scalar("data/games_seen", games_seen, chunks_seen)
             writer.add_scalar("data/positions_seen", positions_seen, chunks_seen)
             writer.add_scalar("data/epoch", epoch + 1, chunks_seen)
-            # weight distributions, on the same per-chunk axis as everything
-            # else. .detach() so the histogram never holds the graph alive, and
-            # .cpu() because the bucketing runs on the host anyway. a dead layer
-            # shows up here as a distribution that stops moving between chunks,
-            # which the loss curves alone would not tell you
             for param_name, param in model.named_parameters():
-                writer.add_histogram(f"weights/{param_name}", param.detach().cpu(), chunks_seen)
+                writer.add_histogram(
+                    f"weights/{param_name}", param.detach().cpu(), chunks_seen
+                )
             writer.flush()
 
-            # release this chunk before pulling the next, so peak memory stays
-            # at one chunk rather than two
+            # release this chunk before pulling the next so peak memory stays at one chunk rather than two
             del X_train, t_train, train_dataset, train_dataloader
 
-        # no epoch-level save: the last chunk of the epoch already wrote one,
-        # and validation does not change the weights
-
-        # check validation accuracy to see if general patterns are being learnt
         model.eval()
         valid_policy_sum = 0.0
         valid_value_sum = 0.0
@@ -335,8 +329,6 @@ if __name__ == "__main__":
                 value_loss = value_criterion(
                     pred_val, batch_val_target
                 )  # calculate loss for value
-                # .item() so tensorboard gets a float. handing it the tensor
-                # would also pin the graph for the whole no_grad pass
                 policy_l = policy_loss.item()
                 value_l = value_loss.item()
                 valid_policy_sum += policy_l
@@ -344,9 +336,6 @@ if __name__ == "__main__":
                 valid_loss_sum += policy_l + value_l
 
         valid_time = time.time() - valid_start
-        # validation runs once per epoch, so it is one point, meaned over the
-        # pass. logged at chunks_seen, the same x axis as the train curves, so
-        # policy_loss/train and policy_loss/valid overlay on one chart
         num_valid_batches = len(valid_dataloader)
         valid_policy = valid_policy_sum / num_valid_batches
         valid_value = valid_value_sum / num_valid_batches
@@ -366,15 +355,16 @@ if __name__ == "__main__":
                 valid_policy, valid_value, valid_total
             )
         )
-        # where the epoch actually went. "other" is checkpoint save plus the
-        # final next() that raises StopIteration and rebuilds the generator
         other = epoch_time - data_time_sum - compute_time_sum - valid_time
         print(
             "  breakdown: data {:.1f}s ({:.0f}%) | compute {:.1f}s ({:.0f}%) | "
             "valid {:.1f}s ({:.0f}%) | other {:.1f}s".format(
-                data_time_sum, data_time_sum / max(epoch_time, 1e-9) * 100,
-                compute_time_sum, compute_time_sum / max(epoch_time, 1e-9) * 100,
-                valid_time, valid_time / max(epoch_time, 1e-9) * 100,
+                data_time_sum,
+                data_time_sum / max(epoch_time, 1e-9) * 100,
+                compute_time_sum,
+                compute_time_sum / max(epoch_time, 1e-9) * 100,
+                valid_time,
+                valid_time / max(epoch_time, 1e-9) * 100,
                 other,
             )
         )
