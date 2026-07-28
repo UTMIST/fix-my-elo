@@ -1,4 +1,0 @@
-numpy
-python-chess
-stockfish
-torch
