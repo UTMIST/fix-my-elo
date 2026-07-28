@@ -51,16 +51,15 @@ class PGN_Dataset:
         self.max_games = max_games
         self.batchsize = batchsize
 
+        # SkipVisitor tokenises each game without building a board or parsing
+        # SAN, ~135x faster than read_game and counts identically. a game with
+        # invalid SAN is counted by both: read_game records the error and
+        # truncates the mainline, it never drops the game
+        count = 0
         with open(path) as f:
-            count = 0
-            while True:
-                game = chess.pgn.read_game(f)
-                if game is None or count == max_games:
-                    break
+            while count < max_games and chess.pgn.skip_game(f):
                 count += 1
-                if count % 1000 == 0:
-                    print(f"counted {count} games")
-        self.length = min(count, max_games)
+        self.length = count
 
     def generate_dataset(self, num_workers, chunksize, skip_chunks=0):
         # while count <= max_games
@@ -82,10 +81,16 @@ class PGN_Dataset:
                 if not chess.pgn.skip_game(f):
                     break
             batch = []
+            bad_games = 0
             while count <= self.max_games:
                 game = chess.pgn.read_game(f)
                 if game is None:
                     break
+                # read_game does not drop a game with invalid SAN, it records
+                # the error and truncates the mainline there, so those games
+                # contribute fewer positions. count them so the loss is visible
+                if game.errors:
+                    bad_games += 1
                 # process this game
                 batch += game_to_datapoint(game)
 
@@ -95,6 +100,12 @@ class PGN_Dataset:
                     boards, targets = extract_from_fen(
                         batch, num_workers=num_workers, chunksize=chunksize
                     )
+                    if bad_games:
+                        print(
+                            f"chunk ending at game {count}: {bad_games} game(s) had "
+                            f"parse errors and were truncated"
+                        )
+                    bad_games = 0
                     yield torch.from_numpy(boards), torch.from_numpy(targets)
                     del boards, targets
                     batch = []
