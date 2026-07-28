@@ -13,7 +13,12 @@ import BoardControls from '../board-pane/BoardControls';
 import BoardOptions from '../board-pane/BoardOptions';
 import './MainViewer.css';
 
-const ENGINE_REQUEST_TIMEOUT_MS = 170000;
+// Config from env. NEXT_PUBLIC_* vars are inlined into the client bundle at build
+// time (set them in fme-app/.env.local for dev, or as build args for Docker).
+// Fallbacks keep the app working if the env file is absent.
+const API_BASE_URL = (process.env.BACKEND_API_URL ?? 'http://127.0.0.1:8000').replace(/\/$/, '');
+const ENGINE_REQUEST_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_ENGINE_REQUEST_TIMEOUT_MS) || 170000;
+const DEFAULT_NUM_SIMULATIONS = Number(process.env.NEXT_PUBLIC_DEFAULT_NUM_SIMULATIONS) || 120;
 
 const createDefaultHeaders = () => {
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
@@ -66,7 +71,7 @@ export default function MainViewer() {
   const [manualHeaders, setManualHeaders] = useState(createDefaultHeaders);
   const [engineMoves, setEngineMoves] = useState([]);
   const [engineUserColor, setEngineUserColor] = useState('white');
-  const [engineNumSimulations, setEngineNumSimulations] = useState(120);
+  const [engineNumSimulations, setEngineNumSimulations] = useState(DEFAULT_NUM_SIMULATIONS);
   const [engineHeaders, setEngineHeaders] = useState(() => ({
     ...createDefaultHeaders(),
     Event: 'Play vs Team2 Agent',
@@ -174,7 +179,7 @@ export default function MainViewer() {
       const controller = new AbortController();
       timeoutId = setTimeout(() => controller.abort(), ENGINE_REQUEST_TIMEOUT_MS);
 
-      const response = await fetch('/api/agent-move', {
+      const response = await fetch(`${API_BASE_URL}/agent_move/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

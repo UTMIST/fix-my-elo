@@ -1,0 +1,10 @@
+# Dependencies for the engine service.
+# NOTE: torch is installed separately in engine_server.Dockerfile from the CPU
+# wheel index (https://download.pytorch.org/whl/cpu) to avoid the multi-GB CUDA
+# build. Do not add torch here or it will pull the default (CUDA) wheel.
+numpy==2.5.1
+chess==1.11.2
+fastapi==0.140.0
+uvicorn==0.50.0
+pydantic==2.13.4
+httpx==0.28.1
