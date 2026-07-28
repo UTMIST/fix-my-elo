@@ -1,4 +1,3 @@
-import csv
 import math
 import os
 import time
@@ -8,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.tensorboard import SummaryWriter
 
 from Team2.dataset import PGN_Dataset
 from Team2.model_files.SLPolicyValueGPU import SLPolicyValueNetwork
@@ -20,9 +20,9 @@ if __name__ == "__main__":
     # MAX_VALIDATION_GAMES = 30000 # must be at least GAMES_PER_BATCH
     # GAMES_PER_BATCH = 30000
     MAX_GAMES = 10000
-    MAX_VALIDATION_GAMES = 1000 # must be at least GAMES_PER_BATCH
-    GAMES_PER_BATCH = 1000
-    NUM_WORKERS = 20
+    MAX_VALIDATION_GAMES = 10 # must be at least GAMES_PER_BATCH
+    GAMES_PER_BATCH = 10
+    NUM_WORKERS = 4
     CHUNKSIZE = 1024
     model = SLPolicyValueNetwork().to(device)
     # model.load_state_dict(torch.load("sl_policy_network_KC.pth", map_location=torch.device("cpu")))
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     model.train()
 
     train_to_test_ratio = 0.9
-    batch_size = 4096
+    batch_size = 256
 
     dataset = PGN_Dataset(
         "Team2/pgn_files/LumbrasGigaBase_OTB_ELO2400.pgn",
@@ -75,12 +75,7 @@ if __name__ == "__main__":
     print(f"[load] valid set built: {X_valid.shape[0]} positions")
     del valid_boards, valid_targets
     valid_dataset = TensorDataset(X_valid, t_valid)
-    # num_workers=0: the dataset is already resident in this process, so worker
-    # processes only add forks of a large parent and buy no I/O overlap
-    # drop_last here too: validation is a second allocation regime (no_grad, no
-    # gradient buffers) with its own odd trailing batch. it also fixes the
-    # averaging: avg loss divides by batch count, so an unequal last batch would
-    # be weighted the same as a full one
+    
     valid_dataloader = DataLoader(
         valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0, drop_last=True
     )
@@ -94,23 +89,20 @@ if __name__ == "__main__":
     start_epoch = 0
     start_batch = 0
 
-    log_path = os.path.join(os.path.dirname(__file__), "lab_training_log.csv")
-    if not os.path.exists(log_path):
-        with open(log_path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(
-                [
-                    "epoch",
-                    "avg_train_policy_loss",
-                    "avg_train_value_loss",
-                    "avg_train_loss",
-                    "avg_val_policy_loss",
-                    "avg_val_value_loss",
-                    "avg_val_loss",
-                    "epoch_time_s",
-                    "total_time_s",
-                ]
-            )
+    run_name = time.strftime("%Y%m%d-%H%M%S")
+    log_dir = os.path.join(os.path.dirname(__file__), "runs", run_name)
+    writer = SummaryWriter(log_dir=log_dir)
+    print(f"[log] tensorboard writing to {log_dir}")
+    # the settings this run's curves came from, so a run is interpretable months
+    # later without digging up the commit it was launched from
+    writer.add_text(
+        "config",
+        f"max_games={MAX_GAMES} games_per_batch={GAMES_PER_BATCH} "
+        f"batch_size={batch_size} lr={optimizer.param_groups[0]['lr']} "
+        f"num_workers={NUM_WORKERS} chunksize={CHUNKSIZE} "
+        f"device={device} valid_chunks={num_validation_batches}",
+        0,
+    )
 
     epochs = 100
     run_start = time.time()
@@ -120,6 +112,7 @@ if __name__ == "__main__":
     games_seen = 0
     positions_seen = 0
     chunks_seen = 0
+    
     for epoch in range(epochs):
 
         epoch_start = time.time()
@@ -127,10 +120,6 @@ if __name__ == "__main__":
         chunk_idx = 0
         # every epoch skips the validation chunks, so they all see the same count
         chunks_this_epoch = total_chunks - num_validation_batches
-        train_loss_sum = 0.0
-        train_policy_sum = 0.0
-        train_value_sum = 0.0
-        train_batches = 0
         # split the epoch into time spent waiting on data vs time in the model
         data_time_sum = 0.0
         compute_time_sum = 0.0
@@ -158,11 +147,7 @@ if __name__ == "__main__":
             # X_train is (N, 13, 8, 8) int8, t_train is (N, 2) int64 [move, winner]
             build_start = time.time()
             train_dataset = TensorDataset(X_train, t_train)
-            # drop_last: the trailing partial batch is a different odd size every
-            # chunk, and each distinct size strands an unusable remnant in the cuda
-            # allocator. dropping it makes every allocation identical so blocks
-            # recycle exactly. costs <0.4% of the chunk, and shuffle reshuffles the
-            # dropped tail each pass so no data is permanently excluded
+            
             train_dataloader = DataLoader(
                 train_dataset,
                 batch_size=batch_size,
@@ -181,6 +166,11 @@ if __name__ == "__main__":
                 f"({chunk_idx / chunks_this_epoch * 100:.1f}%) "
                 f"elapsed: {time.time() - epoch_start:.1f}s"
             )
+            
+            chunk_policy_sum = 0.0
+            chunk_value_sum = 0.0
+            chunk_loss_sum = 0.0
+            chunk_batches = 0
             compute_start = time.time()
             for index, (data, target) in enumerate(train_dataloader):
                 # stored int8 to keep the chunk small, cast per minibatch on device
@@ -211,10 +201,10 @@ if __name__ == "__main__":
                     f"policy: {policy_l:.4f} value: {value_l:.4f} total: {total_l:.4f} "
                     f"elapsed: {time.time() - epoch_start:.1f}s"
                 )
-                train_policy_sum += policy_l
-                train_value_sum += value_l
-                train_loss_sum += total_l
-                train_batches += 1
+                chunk_policy_sum += policy_l
+                chunk_value_sum += value_l
+                chunk_loss_sum += total_l
+                chunk_batches += 1
                 batch_idx += 1
 
             compute_time = time.time() - compute_start
@@ -230,11 +220,6 @@ if __name__ == "__main__":
             games_seen += GAMES_PER_BATCH
             positions_seen += X_train.shape[0]
 
-            # checkpoint every chunk, not every epoch, so a crash costs one
-            # chunk of work instead of a whole epoch. write to a temp file and
-            # rename: os.replace is atomic on posix, so a crash mid-write
-            # leaves the previous good checkpoint intact rather than a
-            # truncated file
             save_start = time.time()
             tmp_path = checkpoint_path + ".tmp"
             torch.save(
@@ -263,6 +248,33 @@ if __name__ == "__main__":
                 f"seen | saved in {time.time() - save_start:.1f}s"
             )
 
+            if chunk_batches:
+                writer.add_scalar(
+                    "policy_loss/train", chunk_policy_sum / chunk_batches, chunks_seen
+                )
+                writer.add_scalar(
+                    "value_loss/train", chunk_value_sum / chunk_batches, chunks_seen
+                )
+                writer.add_scalar(
+                    "total_loss/train", chunk_loss_sum / chunk_batches, chunks_seen
+                )
+            writer.add_scalar("time/chunk_data_seconds", fetch_time, chunks_seen)
+            writer.add_scalar("time/chunk_compute_seconds", compute_time, chunks_seen)
+            writer.add_scalar(
+                "time/chunk_data_fraction", fetch_time / max(chunk_total, 1e-9), chunks_seen
+            )
+            writer.add_scalar("data/games_seen", games_seen, chunks_seen)
+            writer.add_scalar("data/positions_seen", positions_seen, chunks_seen)
+            writer.add_scalar("data/epoch", epoch + 1, chunks_seen)
+            # weight distributions, on the same per-chunk axis as everything
+            # else. .detach() so the histogram never holds the graph alive, and
+            # .cpu() because the bucketing runs on the host anyway. a dead layer
+            # shows up here as a distribution that stops moving between chunks,
+            # which the loss curves alone would not tell you
+            for param_name, param in model.named_parameters():
+                writer.add_histogram(f"weights/{param_name}", param.detach().cpu(), chunks_seen)
+            writer.flush()
+
             # release this chunk before pulling the next, so peak memory stays
             # at one chunk rather than two
             del X_train, t_train, train_dataset, train_dataloader
@@ -271,15 +283,10 @@ if __name__ == "__main__":
         # and validation does not change the weights
 
         # check validation accuracy to see if general patterns are being learnt
-        avg_train_policy = train_policy_sum / train_batches if train_batches else 0.0
-        avg_train_value = train_value_sum / train_batches if train_batches else 0.0
-        avg_train_loss = train_loss_sum / train_batches if train_batches else 0.0
-
         model.eval()
-        test_loss = 0
-        test_policy_sum = 0.0
-        test_value_sum = 0.0
-        correct = 0
+        valid_policy_sum = 0.0
+        valid_value_sum = 0.0
+        valid_loss_sum = 0.0
         valid_start = time.time()
 
         with torch.no_grad():
@@ -295,19 +302,25 @@ if __name__ == "__main__":
                 value_loss = value_criterion(
                     pred_val, batch_val_target
                 )  # calculate loss for value
-                # .item() so the averages are floats. accumulating the tensor
-                # made the csv column read "tensor(10.8533)" instead of a number
+                # .item() so tensorboard gets a float. handing it the tensor
+                # would also pin the graph for the whole no_grad pass
                 policy_l = policy_loss.item()
                 value_l = value_loss.item()
-                test_policy_sum += policy_l
-                test_value_sum += value_l
-                test_loss += policy_l + value_l
+                valid_policy_sum += policy_l
+                valid_value_sum += value_l
+                valid_loss_sum += policy_l + value_l
 
         valid_time = time.time() - valid_start
+        # validation runs once per epoch, so it is one point, meaned over the
+        # pass. logged at chunks_seen, the same x axis as the train curves, so
+        # policy_loss/train and policy_loss/valid overlay on one chart
         num_valid_batches = len(valid_dataloader)
-        avg_val_policy = test_policy_sum / num_valid_batches
-        avg_val_value = test_value_sum / num_valid_batches
-        avg_val_loss = test_loss / num_valid_batches
+        valid_policy = valid_policy_sum / num_valid_batches
+        valid_value = valid_value_sum / num_valid_batches
+        valid_total = valid_loss_sum / num_valid_batches
+        writer.add_scalar("policy_loss/valid", valid_policy, chunks_seen)
+        writer.add_scalar("value_loss/valid", valid_value, chunks_seen)
+        writer.add_scalar("total_loss/valid", valid_total, chunks_seen)
         epoch_time = time.time() - epoch_start
         total_time = time.time() - run_start
         print(
@@ -316,13 +329,8 @@ if __name__ == "__main__":
             )
         )
         print(
-            "  train  policy {:.6f} | value {:.6f} | total {:.6f}".format(
-                avg_train_policy, avg_train_value, avg_train_loss
-            )
-        )
-        print(
             "  valid  policy {:.6f} | value {:.6f} | total {:.6f}".format(
-                avg_val_policy, avg_val_value, avg_val_loss
+                valid_policy, valid_value, valid_total
             )
         )
         # where the epoch actually went. "other" is checkpoint save plus the
@@ -338,20 +346,14 @@ if __name__ == "__main__":
             )
         )
 
-        with open(log_path, "a", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(
-                [
-                    epoch + 1,
-                    float(avg_train_policy),
-                    float(avg_train_value),
-                    float(avg_train_loss),
-                    float(avg_val_policy),
-                    float(avg_val_value),
-                    float(avg_val_loss),
-                    float(round(epoch_time, 1)),
-                    float(round(total_time, 1)),
-                ]
-            )
+        # epoch-level timing, on the epoch x axis
+        writer.add_scalar("time/epoch_seconds", epoch_time, epoch + 1)
+        writer.add_scalar("time/epoch_data_seconds", data_time_sum, epoch + 1)
+        writer.add_scalar("time/epoch_compute_seconds", compute_time_sum, epoch + 1)
+        writer.add_scalar("time/epoch_valid_seconds", valid_time, epoch + 1)
+        writer.add_scalar("time/total_seconds", total_time, epoch + 1)
+        writer.flush()
 
         model.train()
+
+    writer.close()
