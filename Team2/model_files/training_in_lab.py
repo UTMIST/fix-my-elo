@@ -103,6 +103,15 @@ if __name__ == "__main__":
         f"device={device} valid_chunks={num_validation_batches}",
         0,
     )
+    # the architecture itself, for the Graphs tab. add_graph traces the model with
+    # a real forward pass, so it needs a sample input of the right shape and dtype:
+    # one board, cast the same way the training loop casts its minibatches. traced
+    # in eval so the trace does not move batchnorm running stats before the first
+    # real step
+    model.eval()
+    writer.add_graph(model, X_valid[:1].to(device).float())
+    model.train()
+    print("[log] model graph written")
 
     epochs = 100
     run_start = time.time()
@@ -170,6 +179,7 @@ if __name__ == "__main__":
             chunk_policy_sum = 0.0
             chunk_value_sum = 0.0
             chunk_loss_sum = 0.0
+            chunk_grad_norm_sum = 0.0
             chunk_batches = 0
             compute_start = time.time()
             for index, (data, target) in enumerate(train_dataloader):
@@ -188,6 +198,23 @@ if __name__ == "__main__":
                 loss = policy_loss + value_loss
                 optimizer.zero_grad()  # reset gradient
                 loss.backward()  # calculate gradient
+                # global l2 norm over every parameter's gradient, taken between
+                # backward and step while the grads are the ones about to be
+                # applied. stacking the per-parameter norms and norming once
+                # gives the same number as flattening all grads into one vector,
+                # without building that vector. a spike here is the cause of a
+                # loss spike, and a collapse toward zero says the net has
+                # stopped learning even while the loss curve still looks flat
+                grad_norm = torch.norm(
+                    torch.stack(
+                        [
+                            p.grad.detach().norm(2)
+                            for p in model.parameters()
+                            if p.grad is not None
+                        ]
+                    ),
+                    2,
+                )
                 optimizer.step()  # update parameters
 
                 # one .item() per component, then add on the host. loss.item()
@@ -195,15 +222,18 @@ if __name__ == "__main__":
                 policy_l = policy_loss.item()
                 value_l = value_loss.item()
                 total_l = policy_l + value_l
+                grad_norm_l = grad_norm.item()
                 print(
                     f"      epoch {epoch + 1} batch {index + 1}/{num_inner_batches} "
                     f"({(index + 1) / num_inner_batches * 100:.1f}%) "
                     f"policy: {policy_l:.4f} value: {value_l:.4f} total: {total_l:.4f} "
+                    f"grad_norm: {grad_norm_l:.4f} "
                     f"elapsed: {time.time() - epoch_start:.1f}s"
                 )
                 chunk_policy_sum += policy_l
                 chunk_value_sum += value_l
                 chunk_loss_sum += total_l
+                chunk_grad_norm_sum += grad_norm_l
                 chunk_batches += 1
                 batch_idx += 1
 
@@ -257,6 +287,9 @@ if __name__ == "__main__":
                 )
                 writer.add_scalar(
                     "total_loss/train", chunk_loss_sum / chunk_batches, chunks_seen
+                )
+                writer.add_scalar(
+                    "grad_norm/train", chunk_grad_norm_sum / chunk_batches, chunks_seen
                 )
             writer.add_scalar("time/chunk_data_seconds", fetch_time, chunks_seen)
             writer.add_scalar("time/chunk_compute_seconds", compute_time, chunks_seen)
