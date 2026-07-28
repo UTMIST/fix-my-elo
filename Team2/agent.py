@@ -83,6 +83,7 @@ class Agent:
         p = mcts.policy_cache.get(board)
         priors = p[0, move_labels].detach().numpy().astype(np.float32, copy=False)
 
+        combined = []
         # debuggning (show move visits + counts)
         if debug:
             combined = zip(moves, counts, evals, priors)
@@ -91,27 +92,23 @@ class Agent:
             for i, item in enumerate(combined):
                 # if i == 5:
                 #     break
-                print(f"move: {item[0]}, count: {item[1].item():.5f}, ev: {item[2].item():.5f}, policy logit: {item[3].item():.5f}")
+                # print(f"move: {item[0]}, count: {item[1].item():.5f}, ev: {item[2].item():.5f}, policy logit: {item[3].item():.5f}")
                 if item[1].item() > 0:
                     checked += 1
-            print("final eval: ", mcts.expected_reward[board][combined[0][0]])
+            # print("final eval: ", mcts.expected_reward[board][combined[0][0]])
 
             if counts.size == 0:
                 raise RuntimeError(f"MCTS returned no visit counts for board: {board}")
-            print(f"tested {checked} moves out of ",len(list(game_state.legal_moves)))
+            # print(f"tested {checked} moves out of ",len(list(game_state.legal_moves)))
 
-        # deterministic selection when temperature == 0
         if temperature == 0:
             idx = int(np.argmax(counts))
-            return moves[idx]
+            return (moves[idx], combined)
 
-        # compute a numerically-stable log-softmax over counts
-        # add tiny epsilon to avoid log(0)
         eps = 1e-16
         log_counts = np.log(counts + eps)
         scaled = log_counts / float(temperature)
 
-        # fallback to normalized counts if scaling produced non-finite values
         if not np.all(np.isfinite(scaled)):
             probs = counts / counts.sum()
         else:
@@ -126,7 +123,7 @@ class Agent:
 
         probs = probs / probs.sum()
 
-        return self.rng.choice(moves, p=probs)
+        return (self.rng.choice(moves, p=probs), combined)
     
     def evaluate_value(self, fen: str) -> float:
         """Return the scalar value-network evaluation for the given FEN (value is from
@@ -301,11 +298,9 @@ class Agent:
         weight_decay=1e-4
         )
         
-        # try cyclic lr for faster learning and possible convergence
         scheduler = StepLR(optimizer=optimizer, step_size=50, gamma=0.1, last_epoch=41)
 
         start_time = time.time()
-        # keep a rolling buffer of examples from recent epochs (last N epochs)
         recent_epoch_examples = []
         max_epoch_buffer = 50 #30 epochs is around 5gb of data with 100 games per epoch
 
@@ -313,7 +308,6 @@ class Agent:
             all_examples = []
             print(f"[Stockfish-Only] epoch {epoch}: generating {num_games} games vs Stockfish")
 
-            # Generate games in parallel
             model_state_dict = {k: v.cpu() for k, v in self.policy_value_network.state_dict().items()}
             worker_args = [
                 (model_state_dict, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, num_simulations, temperature)
@@ -344,24 +338,20 @@ class Agent:
                 data = data.to(device)
                 batch_move_target = target[:, 0].to(device)
                 batch_val_target = target[:, 1].float().unsqueeze(1).to(device)
-
                 pred_policy, pred_val = self.policy_value_network(data)
 
-                # Policy: only train on datapoints where winner label == 1
                 mask = (batch_val_target.view(-1) == 1)
                 if mask.sum() > 0:
                     policy_loss = policy_criterion(pred_policy[mask], batch_move_target[mask])
                 else:
                     policy_loss = torch.tensor(0.0, device=device)
 
-                # Value: train on all datapoints in the batch
                 value_loss = value_criterion(pred_val, batch_val_target)
                 loss = policy_loss + value_loss
 
                 optimizer.zero_grad()
                 loss.backward()
 
-                # gradient clipping to prevent explosion
                 torch.nn.utils.clip_grad_norm_(self.policy_value_network.parameters(), max_norm=1.0)
 
                 optimizer.step()
@@ -437,7 +427,7 @@ class Agent:
                     moves.append(move)
                     board.push_uci(move)
                 else:
-                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.0, debug=False)
+                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.0, debug=False)[0]
                     moves.append(move)
                     board.push_uci(move)
 
@@ -471,7 +461,7 @@ class Agent:
         moves = []
 
         for i in range(2):
-            board = chess.Board()  # reset board for each game
+            board = chess.Board()
             examples = []
 
             if i == 1:
@@ -511,7 +501,7 @@ class Agent:
                     # print(f"took {end - start:.5f}s for stockfish")
                 else:
                     # start = time.time()
-                    move = self.select_move(game_state=board, num_simulations=num_simulations, temperature = temperature).item()
+                    move = self.select_move(game_state=board, num_simulations=num_simulations, temperature = temperature).item()[0]
                     board.push_uci(move)
                     # end = time.time()
                     # print(f"took {end-start:.5f}s for model")
@@ -547,7 +537,7 @@ class Agent:
 
             # print(game_state.fullmove_number)
             
-            move = self.select_move(game_state, num_simulations=num_simulations, temperature=temperature)
+            move = self.select_move(game_state, num_simulations=num_simulations, temperature=temperature)[0]
             
             # store training example
             examples.append([board_tensor.squeeze(0), move_tensor_to_label(uci_to_tensor(move)), None]) # winner to be assigned later
@@ -604,7 +594,6 @@ class Agent:
         old_nn = SLPolicyValueNetwork().to(device)
         old_nn.load_state_dict(self.policy_value_network.state_dict())
         policy_criterion = nn.CrossEntropyLoss() # softmax regression loss function
-        # use SmoothL1 (Huber) for value head - more robust than plain MSE
         value_criterion = nn.SmoothL1Loss()
         optimizer = optim.AdamW(
         [{'params': self.policy_value_network.parameters(), 'lr': 1e-3, 'initial_lr': 1e-3}],
@@ -621,7 +610,6 @@ class Agent:
             all_examples = []
             print(f'starting training iteration {epoch}/{num_training_iterations}')
             
-            # create training examples through self-play
             model_state_dict = {
                 k: v.cpu()
                 for k, v in self.policy_value_network.state_dict().items()
@@ -641,7 +629,7 @@ class Agent:
                 for _ in range(num_games)
             ]
 
-            ctx = get_context("spawn")  # required for PyTorch safety
+            ctx = get_context("spawn")  # required for PyTorch safety?
             
             workers = 22
             print(f"completed {0}/{num_games} games, {time.time() - start_time:.2f} seconds elapsed")
@@ -662,7 +650,6 @@ class Agent:
                 combined_examples.extend(ex_list)
             train_dataloader, test_dataloader = examples_to_dataset(combined_examples, train_to_test_ratio)
 
-            # Train
             print(f"[Selft-play] training on collected examples using {len(recent_epoch_examples)} epochs of data")
             self.policy_value_network.train()
             for batch_idx, (data, target) in enumerate(train_dataloader):
@@ -672,23 +659,17 @@ class Agent:
 
                 pred_policy, pred_val = self.policy_value_network(data)
 
-                # Policy: only train on datapoints where winner label == 1
                 mask = (batch_val_target.view(-1) == 1)
                 if mask.sum() > 0:
                     policy_loss = policy_criterion(pred_policy[mask], batch_move_target[mask])
                 else:
                     policy_loss = torch.tensor(0.0, device=device)
 
-                # Value: train on all datapoints in the batch
                 value_loss = value_criterion(pred_val, batch_val_target)
                 loss = policy_loss + value_loss
 
                 optimizer.zero_grad()
                 loss.backward()
-
-                # gradient clipping to prevent explosion
-                # torch.nn.utils.clip_grad_norm_(self.policy_value_network.parameters(), max_norm=1.0)
-
                 optimizer.step()
 
                 if batch_idx % 100 == 0:
@@ -729,7 +710,6 @@ class Agent:
                 log_file.write(f"elapsed: {time.time() - start_time:.2f}s, epoch: {epoch}, test loss: {valid_loss:.6f}, lr: {optimizer.param_groups[0]['lr']}\n")
 
     
-
         # if old network is better, update current policy network
         print('pitting old nn against new nn...')
         pit_result = pit(self.policy_value_network, old_nn, num_testing_games, num_simulations, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, temperature)

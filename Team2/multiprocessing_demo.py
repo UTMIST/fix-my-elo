@@ -1,11 +1,25 @@
 from multiprocessing import Process, Manager, Pool
-import os
 import time
 
 data = [i for i in range(10000)]
 expected = [i**1000 for i in data]
 
 
+def time_process(func):
+    def f():
+        start1 = time.process_time()
+        start2 = time.time()
+        func()
+        end1 = time.process_time()
+        end2 = time.time()
+        print(
+            f"{func.__name__} took {end1-start1} cpu seconds and {end2 - start2} clock seconds"
+        )
+
+    return f
+
+
+@time_process
 def default():
     result = []
     for i in data:
@@ -24,6 +38,7 @@ def pool_worker(number):
     return number**1000
 
 
+@time_process
 def basic_usage():
     print("starting basic process test")
     manager = Manager().dict()
@@ -55,6 +70,7 @@ def basic_usage():
     print("done")
 
 
+@time_process
 def pool_usage():
     print("starting pool usage")
     num_workers = 5
@@ -66,23 +82,6 @@ def pool_usage():
 if __name__ == "__main__":
     print("starting main process")
 
-    start1 = time.process_time()
-    start2 = time.time()
     default()
-    end1 = time.process_time()
-    end2 = time.time()
-    print(f"default took {end1-start1} cpu seconds and {end2 - start2} clock seconds")
-
-    start1 = time.process_time()
-    start2 = time.time()
     basic_usage()
-    end1 = time.process_time()
-    end2 = time.time()
-    print(f"basic took {end1-start1} cpu seconds and {end2 - start2} clock seconds")
-
-    start1 = time.process_time()
-    start2 = time.time()
     pool_usage()
-    end1 = time.process_time()
-    end2 = time.time()
-    print(f"pool took {end1-start1} cpu seconds and {end2 - start2} clock seconds")

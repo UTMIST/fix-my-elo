@@ -1,13 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-import os
-from torch.utils.data import DataLoader, TensorDataset
-from data_processing import generate_dataset_from_pgn, label_to_move_table, fen_to_board_tensor
-import chess
-import random
-
 
 
 class ResNetBlock(nn.Module):
