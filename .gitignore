@@ -7,7 +7,7 @@ Team1/kane's model/dataset50kgames.pgn
 **/*.npz
 **/*.pgn
 **/*.pth
-/Team2/__pycache__
+**/__pycache__
 game_examples.pkl
 
 /Team2/*.pth

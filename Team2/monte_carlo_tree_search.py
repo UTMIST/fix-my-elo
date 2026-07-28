@@ -2,7 +2,7 @@ import math
 import torch
 import numpy as np
 from collections import defaultdict
-from data_processing import move_tensor_to_label, uci_to_tensor, fen_to_board_tensor
+from Team2.model_files.deprecated.data_processing import move_tensor_to_label, uci_to_tensor, fen_to_board_tensor
 
 
 class Monte_Carlo_Tree_Search:

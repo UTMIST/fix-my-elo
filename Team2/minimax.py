@@ -1,5 +1,5 @@
 import chess
-from data_processing import fen_to_board_tensor
+from Team2.model_files.deprecated.data_processing import fen_to_board_tensor
 
 
 class MiniMax:

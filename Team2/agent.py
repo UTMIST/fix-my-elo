@@ -17,7 +17,7 @@ from multiprocessing import get_context
 import torch.multiprocessing as mp
 from monte_carlo_tree_search import Monte_Carlo_Tree_Search
 from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
-from data_processing import fen_to_board_tensor, uci_to_tensor, move_tensor_to_label
+from Team2.model_files.deprecated.data_processing import fen_to_board_tensor, uci_to_tensor, move_tensor_to_label
 try:
     from stockfish import Stockfish
 except ImportError:

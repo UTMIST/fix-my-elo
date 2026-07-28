@@ -1,6 +1,6 @@
 import gc
 import os
-from Team2.data_processing import (
+from Team2.model_files.deprecated.data_processing import (
     fen_to_board_tensor,
     uci_to_tensor,
     move_tensor_to_label,
