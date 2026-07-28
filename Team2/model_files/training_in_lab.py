@@ -77,7 +77,13 @@ if __name__ == "__main__":
     valid_dataset = TensorDataset(X_valid, t_valid)
     # num_workers=0: the dataset is already resident in this process, so worker
     # processes only add forks of a large parent and buy no I/O overlap
-    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    # drop_last here too: validation is a second allocation regime (no_grad, no
+    # gradient buffers) with its own odd trailing batch. it also fixes the
+    # averaging: avg loss divides by batch count, so an unequal last batch would
+    # be weighted the same as a full one
+    valid_dataloader = DataLoader(
+        valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0, drop_last=True
+    )
     print(f"[load] valid dataloader ready: {len(valid_dataloader)} minibatches")
 
     # checkpoint = torch.load("checkpoint2.pth")
@@ -152,8 +158,17 @@ if __name__ == "__main__":
             # X_train is (N, 13, 8, 8) int8, t_train is (N, 2) int64 [move, winner]
             build_start = time.time()
             train_dataset = TensorDataset(X_train, t_train)
+            # drop_last: the trailing partial batch is a different odd size every
+            # chunk, and each distinct size strands an unusable remnant in the cuda
+            # allocator. dropping it makes every allocation identical so blocks
+            # recycle exactly. costs <0.4% of the chunk, and shuffle reshuffles the
+            # dropped tail each pass so no data is permanently excluded
             train_dataloader = DataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, num_workers=0
+                train_dataset,
+                batch_size=batch_size,
+                shuffle=True,
+                num_workers=0,
+                drop_last=True,
             )
             num_inner_batches = len(train_dataloader)
             print(
