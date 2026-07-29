@@ -39,11 +39,15 @@ class Agent:
     Agent that uses MCTS with policy and value networks to select moves.
     '''
 
-    def __init__(self, policy_value_network, c_puct, dirichlet_alpha, dirichlet_epsilon, stockfish_path=None):
+    def __init__(self, policy_value_network, c_puct, dirichlet_alpha, dirichlet_epsilon, stockfish_path=None, eval_batch_size=64):
         self.policy_value_network = policy_value_network
         self.c_puct = c_puct
         self.dirichlet_alpha = dirichlet_alpha
         self.dirichlet_epsilon = dirichlet_epsilon
+        # How many leaf positions MCTS queues before one batched forward pass.
+        # Default mirrors Monte_Carlo_Tree_Search's own default so callers that
+        # omit it keep the previous behaviour.
+        self.eval_batch_size = eval_batch_size
         self.rng = np.random.default_rng()
         self.stockfish = None
 
@@ -71,7 +75,7 @@ class Agent:
         device = next(self.policy_value_network.parameters()).device
         self.policy_value_network.eval()
         board = game_state.fen()
-        mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set(), mcts_policy_temperature=mcts_policy_temperature, mcts_temperature=mcts_temperature) # generate new mcts object to save memory
+        mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set(), mcts_policy_temperature=mcts_policy_temperature, mcts_temperature=mcts_temperature, eval_batch_size=self.eval_batch_size) # generate new mcts object to save memory
         mcts.run_simulations(game_state, num_simulations)
 
         legal_moves = [move.uci() for move in game_state.legal_moves]

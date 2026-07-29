@@ -74,32 +74,26 @@ class Agent:
         mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set(), mcts_policy_temperature=mcts_policy_temperature, mcts_temperature=mcts_temperature) # generate new mcts object to save memory
         mcts.run_simulations(game_state, num_simulations)
 
-        legal_moves = [move.uci() for move in game_state.legal_moves]
         moves = list(mcts.frequency_action[board].keys())
         counts = np.array(list(mcts.frequency_action[board].values()), dtype=np.float64)
-        evals = np.fromiter((mcts.expected_reward[game_state.fen()][move] for move in legal_moves), dtype=np.float32, count=len(legal_moves))
-
-        move_labels = np.fromiter((mcts._get_move_label(move) for move in legal_moves), dtype=np.int64, count=len(legal_moves))
-        p = mcts.policy_cache.get(board)
-        priors = p[0, move_labels].detach().numpy().astype(np.float32, copy=False)
 
         combined = []
         # debuggning (show move visits + counts)
         if debug:
-            combined = zip(moves, counts, evals, priors)
-            combined = sorted(combined, key=lambda x: x[1].item(), reverse=True)
-            checked = 0
-            for i, item in enumerate(combined):
-                # if i == 5:
-                #     break
-                # print(f"move: {item[0]}, count: {item[1].item():.5f}, ev: {item[2].item():.5f}, policy logit: {item[3].item():.5f}")
-                if item[1].item() > 0:
-                    checked += 1
-            # print("final eval: ", mcts.expected_reward[board][combined[0][0]])
-
             if counts.size == 0:
                 raise RuntimeError(f"MCTS returned no visit counts for board: {board}")
-            # print(f"tested {checked} moves out of ",len(list(game_state.legal_moves)))
+
+            # evals/priors must be indexed by `moves`, not by legal_moves: frequency_action
+            # is keyed in visit order and only holds moves MCTS actually expanded.
+            evals = np.fromiter((mcts.expected_reward[board][move] for move in moves), dtype=np.float32, count=len(moves))
+            move_labels = np.fromiter((mcts._get_move_label(move) for move in moves), dtype=np.int64, count=len(moves))
+            p = mcts.policy_cache.get(board)
+            priors = p[0, move_labels].detach().numpy().astype(np.float32, copy=False)
+
+            combined = zip(moves, counts.tolist(), evals.tolist(), priors.tolist())
+            combined = sorted(combined, key=lambda x: x[1], reverse=True)
+            checked = sum(1 for item in combined if item[1] > 0)
+            # print(f"tested {checked} moves out of ", len(list(game_state.legal_moves)))
 
         if temperature == 0:
             idx = int(np.argmax(counts))
@@ -397,7 +391,7 @@ class Agent:
             self.agent_vs_stockfish(2, 1000, "pgn_files/LGB70k_examplar_games.pgn", epoch)
 
 
-    def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0):
+    def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0, mcts_policy_temperature=1.0, mcts_temperature=1.0):
         """
         export a game between stockfish and the model. stockfish starts first.
         """
@@ -427,7 +421,8 @@ class Agent:
                     moves.append(move)
                     board.push_uci(move)
                 else:
-                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.0, debug=False)[0]
+                    move = self.select_move(game_state=board, num_simulations=num_simulations, temperature=0.0, debug=False,
+                                            mcts_policy_temperature=mcts_policy_temperature, mcts_temperature=mcts_temperature)[0]
                     moves.append(move)
                     board.push_uci(move)
 

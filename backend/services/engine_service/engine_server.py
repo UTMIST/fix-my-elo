@@ -14,12 +14,16 @@ logger.setLevel(logging.INFO)
 
 
 def load_agent(
-    model_path: str, c_puct: float, dirichlet_alpha: float, dirichlet_epsilon: float
+    model_path: str,
+    c_puct: float,
+    dirichlet_alpha: float,
+    dirichlet_epsilon: float,
+    mcts_batch_size: int,
 ) -> Agent:
     import torch
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info(f"device: {device}")
+    logger.info(f" device: {device}")
     model = SLPolicyValueNetwork().to(device)
 
     if not os.path.exists(model_path):
@@ -39,11 +43,15 @@ def load_agent(
     model.load_state_dict(state_dict, strict=False)
     model.eval()
 
+    logger.info(f" loaded: {model_path}")
+    logger.info(f" mcts batch size: {mcts_batch_size}")
+
     return Agent(
         policy_value_network=model,
         c_puct=c_puct,
         dirichlet_alpha=dirichlet_alpha,
         dirichlet_epsilon=dirichlet_epsilon,
+        eval_batch_size=mcts_batch_size,
     )
 
 
@@ -68,19 +76,23 @@ def parse_int(name: str, default: int) -> int:
 
 
 MODEL_PATH = os.getenv(
-    "MODEL_PATH", "./services/engine_service/SL_trained_stockfish_trained.pth"
+    "MODEL_PATH",
+    "./services/engine_service/model_weights/SL_trained_stockfish_trained.pth",
 )
 C_PUCT = parse_float("C_PUCT", 1.0)
 DIRICHLET_ALPHA = parse_float("DIRICHLET_ALPHA", 0.3)
 DIRICHLET_EPSILON = parse_float("DIRICHLET_EPSILON", 0.25)
 DEFAULT_NUM_SIM = parse_int("NUM_SIM_DEFAULT", 120)
 DEFAULT_TEMP = parse_float("TEMP_DEFAULT", 0.0)
+MCTS_BATCH_SIZE = parse_int("MCTS_BATCH_SIZE", 8)
 
 app = FastAPI()
 
 
 try:
-    AGENT = load_agent(MODEL_PATH, C_PUCT, DIRICHLET_ALPHA, DIRICHLET_EPSILON)
+    AGENT = load_agent(
+        MODEL_PATH, C_PUCT, DIRICHLET_ALPHA, DIRICHLET_EPSILON, MCTS_BATCH_SIZE
+    )
 except Exception as exc:
     print(f"[engine_server] Failed to load agent: {exc}", file=sys.stderr)
     sys.exit(1)

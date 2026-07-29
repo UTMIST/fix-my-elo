@@ -15,6 +15,10 @@ services:
     environment:
       - ENGINE_URL=http://engine_server:8001
       - FRONTEND_URL=http://frontend:3000
+      - AGENT_MOVE_DEFAULT_NUM_SIM=${AGENT_MOVE_DEFAULT_NUM_SIM}
+      - AGENT_MOVE_DEFAULT_TEMP=${AGENT_MOVE_DEFAULT_TEMP}
+      - AGENT_MOVE_TIMEOUT_MS=${AGENT_MOVE_TIMEOUT_MS}
+      - AGENT_MOVE_MIN_TIMEOUT_MS=${AGENT_MOVE_MIN_TIMEOUT_MS}
     ports:
       - 8000:8000
   engine_server:
@@ -22,6 +26,14 @@ services:
     build:
       context: ./backend
       dockerfile: engine_server.Dockerfile
+    environment:
+      - MODEL_PATH=${MODEL_PATH}
+      - C_PUCT=${C_PUCT}
+      - DIRICHLET_ALPHA=${DIRICHLET_ALPHA}
+      - DIRICHLET_EPSILON=${DIRICHLET_EPSILON}
+      - MCTS_BATCH_SIZE=${MCTS_BATCH_SIZE}
+      - NUM_SIM_DEFAULT=${NUM_SIM_DEFAULT}
+      - TEMP_DEFAULT=${TEMP_DEFAULT}
     ports:
       - 8001:8001
   frontend:

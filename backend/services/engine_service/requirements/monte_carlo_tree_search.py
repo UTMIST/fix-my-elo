@@ -10,7 +10,7 @@ class Monte_Carlo_Tree_Search:
     Monte Carlo Tree Search implementation using policy and value networks.
     '''
 
-    def __init__(self, policy_value_network, c_puct, alpha, epsilon, visited, mcts_policy_temperature=1.0, mcts_temperature=1.0, policy_batch_size=64, fpu=4.0):
+    def __init__(self, policy_value_network, c_puct, alpha, epsilon, visited, mcts_policy_temperature=1.0, mcts_temperature=1.0, eval_batch_size=64, fpu=4.0):
         '''
         policy_network: neural network that predicts move probabilities
         value_network: neural network that predicts state value
@@ -37,7 +37,7 @@ class Monte_Carlo_Tree_Search:
         self.legal_moves_cache = {}
         self.board_tensor_cache = {}
         self.move_label_cache = {}
-        self.policy_batch_size = max(1, int(policy_batch_size))
+        self.eval_batch_size = max(1, int(eval_batch_size))
         self.rng = np.random.default_rng()
 
         self._pending_leaf_boards = []
@@ -174,8 +174,8 @@ class Monte_Carlo_Tree_Search:
         self._pending_leaf_set.clear()
 
 
-    def run_simulations(self, game_state, num_simulations, policy_batch_size=None):
-        batch_size = self.policy_batch_size if policy_batch_size is None else max(1, int(policy_batch_size))
+    def run_simulations(self, game_state, num_simulations, eval_batch_size=None):
+        batch_size = self.eval_batch_size if eval_batch_size is None else max(1, int(eval_batch_size))
         simulations_done = 0
 
         while simulations_done < num_simulations:
