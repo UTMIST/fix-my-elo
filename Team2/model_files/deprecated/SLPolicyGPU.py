@@ -5,7 +5,7 @@ import torch.optim as optim
 import os
 
 from torch.utils.data import DataLoader, TensorDataset
-from Team2.model_files.deprecated.data_processing import generate_dataset_from_pgn, label_to_move_table
+from Team2.data_processing import generate_dataset_from_pgn, label_to_move_table
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {torch.cuda.get_device_name(torch.cuda.current_device())}")
