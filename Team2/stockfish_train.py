@@ -1,6 +1,6 @@
-from agent import Agent
+from Team2.agent import Agent
 from stockfish import Stockfish
-from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
+from Team2.model_files.SLPolicyValueGPU import SLPolicyValueNetwork
 import chess
 import chess.pgn
 import random

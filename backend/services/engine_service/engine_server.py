@@ -77,7 +77,7 @@ def parse_int(name: str, default: int) -> int:
 
 MODEL_PATH = os.getenv(
     "MODEL_PATH",
-    "./services/engine_service/model_weights/SL_trained_stockfish_trained.pth",
+    ".services/engine_service/model/weights/lab_trained_epoch_1.pth",
 )
 C_PUCT = parse_float("C_PUCT", 1.0)
 DIRICHLET_ALPHA = parse_float("DIRICHLET_ALPHA", 0.3)

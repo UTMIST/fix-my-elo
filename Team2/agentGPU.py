@@ -1,8 +1,8 @@
 # we need to run on a py file instead of a jupyter notebook otherwise multiprocessing will not work properly
 import chess
 
-from agent import Agent, pit
-from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
+from Team2.agent import Agent, pit
+from Team2.model_files.SLPolicyValueGPU import SLPolicyValueNetwork
 import torch
 import os
 

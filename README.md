@@ -36,17 +36,25 @@ Requires Docker with Compose v2.
 
 ### Model weights
 
-`.pth` files are gitignored, so download the checkpoint into the engine service folder
-before starting anything:
+`.pth` files are gitignored, so download the checkpoints before starting anything:
 
-```bash
-curl -L \
-  https://huggingface.co/Khushi-Malik/fix-my-elo/resolve/main/SL_trained_stockfish_trained.pth \
-  -o backend/services/engine_service/SL_trained_stockfish_trained.pth
+**[Google Drive: model weights](https://drive.google.com/drive/folders/16eUW6h6a5prGp_lHqUCJzWj5A6eL8Pk7)**
+
+Put them in
+[backend/services/engine_service/model_weights/](backend/services/engine_service/model_weights/):
+
+```
+backend/services/engine_service/model_weights/
+├── SL_trained_stockfish_trained.pth
+└── lab_trained_epoch_1.pth
 ```
 
-The file is 370 MB and the repo is public, so no Hugging Face token is needed. Keep the
-filename as is or set `MODEL_PATH` to match. The engine exits on startup without it.
+Each file is around 370 MB. Keep the filenames as they are and point `MODEL_PATH` at the
+one you want, or rename and set `MODEL_PATH` to match. The engine exits on startup if the
+path does not resolve, logging the path it tried.
+
+`MODEL_PATH` is resolved relative to the working directory, which is `/app` in every
+container, so the relative form in [.env](.env) works both locally and on Modal.
 
 ### Fully local
 
@@ -93,9 +101,37 @@ move from the command line.
 
 ## Configuration
 
-Env files live at the repo root, `.env` and `.env.local`, and in
-[fme-app/.env.local](fme-app/.env.local). Compose auto-loads root `.env` for `${VAR}`
-substitution.
+Every tool in the stack looks for a file named `.env`, so that is the only root env file
+that does anything. [.env.local](.env.local) is the tracked reference copy, holding
+local-dev values and a comment for every variable. `.env` itself is gitignored, which is
+where the Modal tokens go.
+
+To start from the reference values, copy it over:
+
+```bash
+cp .env.local .env
+```
+
+Nothing reads `.env.local` under that name, so editing it alone has no effect. There is
+also a separate [fme-app/.env.local](fme-app/.env.local) for the frontend, which `next
+dev` does load automatically.
+
+Compose auto-loads root `.env`, but only to substitute `${VAR}` inside the compose file.
+It does not inject anything into containers. Every variable a service needs must also
+appear in that service's `environment:` block, which is why the blocks in
+[compose.yaml](compose.yaml) and [compose.local.yaml](compose.local.yaml) restate them.
+Adding a new engine variable means adding it in three places: `.env`, the service's
+`environment:` block, and the dict in
+[modal_api.py](backend/services/engine_service/modal_api.py) if the deployed engine needs
+it too.
+
+Of the two services, only [api/main.py](backend/api/main.py) calls `load_dotenv`, and
+`.env` is excluded by [backend/.dockerignore](backend/.dockerignore) anyway, so even there
+it is a no-op inside containers. The engine reads real environment variables only, so
+running it with bare `uvicorn` outside Docker picks up none of `.env` unless you export
+the values into your shell first.
+[modal_api.py](backend/services/engine_service/modal_api.py) also calls `load_dotenv`, but
+it runs at deploy time on your machine rather than inside a container.
 
 ### api
 
@@ -112,10 +148,21 @@ substitution.
 
 | Variable | Purpose |
 | --- | --- |
-| `MODEL_PATH` | Checkpoint path. Default `./services/engine_service/SL_trained_stockfish_trained.pth`. |
+| `MODEL_PATH` | Checkpoint path. Default `./services/engine_service/model_weights/SL_trained_stockfish_trained.pth`. |
 | `C_PUCT` | MCTS exploration constant. Default 1.0. |
 | `DIRICHLET_ALPHA` / `DIRICHLET_EPSILON` | Root noise. Defaults 0.3 and 0.25. |
+| `MCTS_BATCH_SIZE` | Leaf positions queued before one batched forward pass. Default 8. |
 | `NUM_SIM_DEFAULT` / `TEMP_DEFAULT` | Engine-side fallbacks. |
+
+All of these are read once at import time in
+[engine_server.py](backend/services/engine_service/engine_server.py), when the module
+constructs the `Agent`, so changing one needs a restart.
+
+`MCTS_BATCH_SIZE` is an upper bound that is rarely reached. MCTS force-flushes its queue
+whenever selection walks back to a still-pending leaf, and since every queued leaf
+consumes one simulation, the queue can never exceed the simulation count. Any value at or
+above `NUM_SIM_DEFAULT` is therefore unreachable and behaves identically. Raising it
+trades fewer, larger forward passes against staler tree statistics during selection.
 
 ### frontend
 
@@ -135,6 +182,11 @@ browser, not just from inside the compose network.
 | --- | --- |
 | `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | Credentials for `modal deploy`. |
 
+The `modal` service also receives the engine variables above. It does not use them
+itself: [modal_api.py](backend/services/engine_service/modal_api.py) reads them at deploy
+time and bakes them into the image environment, which is how they reach the deployed
+engine.
+
 ## Deployment
 
 ### Engine on Modal
@@ -151,8 +203,34 @@ tokens to deploy, then set the URL Modal prints as `ENGINE_URL` on the api.
 
 The checkpoint reaches the image through `COPY . .`, so download the weights before
 deploying and redeploy when they change.
-[backend/.dockerignore](backend/.dockerignore) currently excludes `**/*.pth`, which
-blocks that copy and leaves the deployed engine without a checkpoint.
+
+Engine config is baked into the image with `Image.env()` rather than passed as a
+`modal.Secret`, since a checkpoint path and a few search constants are not credentials.
+`.env()` is applied after the Dockerfile layers, so changing a value rebuilds only that
+final layer and does not re-copy the weights. The tradeoff is that engine config changes
+need a redeploy to take effect.
+
+To read the effective config of a running engine, check its startup logs. The engine logs
+the resolved checkpoint path and MCTS batch size as it constructs the `Agent`.
+
+#### Modal environments
+
+The deploy targets the `FME-engine` environment, not the default `main`:
+
+```bash
+modal environment list      # main is active; FME-engine is where the app lives
+modal app list --env FME-engine
+```
+
+The dashboard opens on the active environment, so the app, its functions, and its
+containers are all invisible until you switch the environment selector to `FME-engine`.
+That environment's web suffix is also what produces the `fme-engine` segment in
+`ENGINE_URL`, which is a quick way to tell which environment a URL belongs to.
+
+The Containers panel will usually look empty even in the right environment. With a 60s
+scaledown window the app runs at zero containers between requests, and that panel shows
+only what is running right now, not history. Use the app's function view and logs for past
+activity.
 
 ### api and frontend
 

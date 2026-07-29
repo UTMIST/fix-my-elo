@@ -13,10 +13,11 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import StepLR
+from torch.utils.tensorboard import SummaryWriter
 from multiprocessing import get_context
 import torch.multiprocessing as mp
-from monte_carlo_tree_search import Monte_Carlo_Tree_Search
-from model_files.SLPolicyValueGPU import SLPolicyValueNetwork
+from Team2.monte_carlo_tree_search import Monte_Carlo_Tree_Search
+from Team2.model_files.SLPolicyValueGPU import SLPolicyValueNetwork
 from Team2.data_processing import fen_to_board_tensor, uci_to_tensor, move_tensor_to_label
 try:
     from stockfish import Stockfish
@@ -597,14 +598,40 @@ class Agent:
 
         scheduler = StepLR(optimizer=optimizer, step_size=50, gamma=0.1)
         start_time = time.time()
-        
+
         recent_epoch_examples = []
         max_epoch_buffer = 3
-        
+        workers = 22
+
+        run_name = time.strftime("%Y%m%d-%H%M%S")
+        log_dir = os.path.join(os.path.dirname(__file__), "runs", run_name)
+        writer = SummaryWriter(log_dir=log_dir)
+        print(f"[log] tensorboard writing to {log_dir}")
+        # the settings this run's curves came from, so a run is interpretable months
+        # later without digging up the commit it was launched from
+        writer.add_text(
+            "config",
+            f"num_training_iterations={num_training_iterations} num_games={num_games} "
+            f"num_simulations={num_simulations} temperature={temperature} "
+            f"resign_moves={resign_moves} resign_threshold={resign_threshold} "
+            f"train_to_test_ratio={train_to_test_ratio} "
+            f"lr={optimizer.param_groups[0]['lr']} c_puct={self.c_puct} "
+            f"dirichlet_alpha={self.dirichlet_alpha} dirichlet_epsilon={self.dirichlet_epsilon} "
+            f"workers={workers} max_epoch_buffer={max_epoch_buffer} "
+            f"num_testing_games={num_testing_games} improvement_threshold={improvement_threshold} "
+            f"device={device}",
+            0,
+        )
+
+        checkpoint_path = "self_play_trained.pth"
+        games_seen = 0
+        positions_seen = 0
+
         for epoch in range(num_training_iterations):
             all_examples = []
+            epoch_start = time.time()
             print(f'starting training iteration {epoch}/{num_training_iterations}')
-            
+
             model_state_dict = {
                 k: v.cpu()
                 for k, v in self.policy_value_network.state_dict().items()
@@ -625,16 +652,31 @@ class Agent:
             ]
 
             ctx = get_context("spawn")  # required for PyTorch safety?
-            
-            workers = 22
-            print(f"completed {0}/{num_games} games, {time.time() - start_time:.2f} seconds elapsed")
-            
+
+            print(f"[gen] epoch {epoch + 1}: generating {num_games} self-play games on {workers} workers")
+            gen_start = time.time()
+
             with ctx.Pool(processes=workers) as pool:
                 for i, game_examples in enumerate(pool.imap_unordered(self_play_worker, args), start=1):
                     all_examples.extend(game_examples)
                     if i % workers == 0 or i == num_games:
-                        print(f"  generated {i}/{num_games} games — elapsed: {time.time() - start_time:.2f}s")
+                        # rate comes off this epoch's generation only, so it is not
+                        # dragged down by time spent training in earlier epochs
+                        rate = i / max(time.time() - gen_start, 1e-9)
+                        print(
+                            f"  [gen] {i}/{num_games} games ({i / num_games * 100:.1f}%) "
+                            f"{len(all_examples):,} positions | {rate:.2f} games/s | "
+                            f"epoch {time.time() - epoch_start:.1f}s | run {time.time() - start_time:.1f}s"
+                        )
 
+            gen_time = time.time() - gen_start
+            games_seen += num_games
+            positions_seen += len(all_examples)
+            print(
+                f"[gen] epoch {epoch + 1} done: {num_games} games, {len(all_examples):,} positions "
+                f"in {gen_time:.1f}s ({gen_time / max(num_games, 1):.2f}s/game, "
+                f"{len(all_examples) / max(num_games, 1):.1f} positions/game)"
+            )
 
             recent_epoch_examples.append(all_examples)
             if len(recent_epoch_examples) > max_epoch_buffer:
@@ -645,8 +687,22 @@ class Agent:
                 combined_examples.extend(ex_list)
             train_dataloader, test_dataloader = examples_to_dataset(combined_examples, train_to_test_ratio)
 
-            print(f"[Selft-play] training on collected examples using {len(recent_epoch_examples)} epochs of data")
+            num_train_batches = len(train_dataloader)
+            print(
+                f"[train] epoch {epoch + 1}: {len(combined_examples):,} examples from "
+                f"{len(recent_epoch_examples)} epochs of data, {num_train_batches} minibatches"
+            )
             self.policy_value_network.train()
+            train_policy_sum = 0.0
+            train_value_sum = 0.0
+            train_loss_sum = 0.0
+            train_grad_norm_sum = 0.0
+            # positions the policy head actually trains on, since the mask drops
+            # every example whose value target is not 1
+            masked_positions = 0
+            total_positions = 0
+            train_batches = 0
+            compute_start = time.time()
             for batch_idx, (data, target) in enumerate(train_dataloader):
                 data = data.to(device)
                 batch_move_target = target[:, 0].to(device)
@@ -665,13 +721,44 @@ class Agent:
 
                 optimizer.zero_grad()
                 loss.backward()
+                grad_norm = torch.norm(
+                    torch.stack([
+                        p.grad.detach().norm(2)
+                        for p in self.policy_value_network.parameters()
+                        if p.grad is not None
+                    ]),
+                    2,
+                )
                 optimizer.step()
 
+                policy_l = policy_loss.item()
+                value_l = value_loss.item()
+                total_l = policy_l + value_l
+                grad_norm_l = grad_norm.item()
+                train_policy_sum += policy_l
+                train_value_sum += value_l
+                train_loss_sum += total_l
+                train_grad_norm_sum += grad_norm_l
+                masked_positions += int(mask.sum().item())
+                total_positions += int(mask.numel())
+                train_batches += 1
+
                 if batch_idx % 100 == 0:
-                    print(f"  [train] batch {batch_idx+1}/{len(train_dataloader)} loss: {loss.item():.6f}")
+                    print(
+                        f"  [train] batch {batch_idx + 1}/{num_train_batches} "
+                        f"({(batch_idx + 1) / max(num_train_batches, 1) * 100:.1f}%) "
+                        f"policy: {policy_l:.4f} value: {value_l:.4f} total: {total_l:.4f} "
+                        f"grad_norm: {grad_norm_l:.4f} "
+                        f"elapsed: {time.time() - epoch_start:.1f}s"
+                    )
+
+            compute_time = time.time() - compute_start
 
             self.policy_value_network.eval()
-            test_loss = 0
+            test_policy_sum = 0.0
+            test_value_sum = 0.0
+            test_loss_sum = 0.0
+            eval_start = time.time()
 
             with torch.no_grad():
                 for batch_idx, (data, target) in enumerate(test_dataloader):
@@ -682,10 +769,17 @@ class Agent:
                     pred_policy, pred_val = self.policy_value_network(data)
                     policy_loss = policy_criterion(pred_policy, batch_move_target)  # calculate loss for policy
                     value_loss = value_criterion(pred_val, batch_val_target) # calculate loss for value
-                    loss = policy_loss + value_loss
-                    test_loss += loss
+                    policy_l = policy_loss.item()
+                    value_l = value_loss.item()
+                    test_policy_sum += policy_l
+                    test_value_sum += value_l
+                    test_loss_sum += policy_l + value_l
 
-            valid_loss = test_loss / len(test_dataloader)
+            eval_time = time.time() - eval_start
+            num_test_batches = max(len(test_dataloader), 1)
+            valid_policy = test_policy_sum / num_test_batches
+            valid_value = test_value_sum / num_test_batches
+            valid_loss = test_loss_sum / num_test_batches
             scheduler.step()
 
             print('epoch: {}, test loss: {:.6f}, lr: {}'.format(
@@ -693,28 +787,113 @@ class Agent:
                 valid_loss,
                 optimizer.param_groups[0]['lr']
                 ))
+            print(
+                "  valid  policy {:.6f} | value {:.6f} | total {:.6f}".format(
+                    valid_policy, valid_value, valid_loss
+                )
+            )
+            if train_batches:
+                print(
+                    "  train  policy {:.6f} | value {:.6f} | total {:.6f} | grad_norm {:.4f}".format(
+                        train_policy_sum / train_batches,
+                        train_value_sum / train_batches,
+                        train_loss_sum / train_batches,
+                        train_grad_norm_sum / train_batches,
+                    )
+                )
+            if total_positions:
+                print(
+                    "  policy head trained on {:,}/{:,} positions ({:.1f}% survived the value==1 mask)".format(
+                        masked_positions, total_positions,
+                        masked_positions / total_positions * 100,
+                    )
+                )
+
+            epoch_time = time.time() - epoch_start
+            total_time = time.time() - start_time
+            other = epoch_time - gen_time - compute_time - eval_time
+            print(
+                "  breakdown: selfplay {:.1f}s ({:.0f}%) | compute {:.1f}s ({:.0f}%) | "
+                "eval {:.1f}s ({:.0f}%) | other {:.1f}s | epoch {:.1f}s | run {:.1f}s".format(
+                    gen_time, gen_time / max(epoch_time, 1e-9) * 100,
+                    compute_time, compute_time / max(epoch_time, 1e-9) * 100,
+                    eval_time, eval_time / max(epoch_time, 1e-9) * 100,
+                    other, epoch_time, total_time,
+                )
+            )
+
+            save_start = time.time()
+            tmp_path = checkpoint_path + ".tmp"
             torch.save({
                 "model": self.policy_value_network.state_dict(),
                 "optimizer": optimizer.state_dict(),
-                "epoch": epoch, 
+                "epoch": epoch,
                 "batch": batch_idx,
-            }, "self_play_trained.pth")
-            print('model checkpoint saved')
+                # enough to reconstruct how much self-play these weights saw
+                "num_games": num_games,
+                "num_simulations": num_simulations,
+                "games_seen": games_seen,
+                "positions_seen": positions_seen,
+            }, tmp_path)
+            # rename over the old file so a crash mid-save cannot leave a truncated checkpoint
+            os.replace(tmp_path, checkpoint_path)
+            print(
+                f"[ckpt] epoch {epoch + 1} batch {batch_idx} | {games_seen:,} games / "
+                f"{positions_seen:,} positions seen | saved in {time.time() - save_start:.1f}s"
+            )
+
+            step = epoch + 1
+            if train_batches:
+                writer.add_scalar("policy_loss/train", train_policy_sum / train_batches, step)
+                writer.add_scalar("value_loss/train", train_value_sum / train_batches, step)
+                writer.add_scalar("total_loss/train", train_loss_sum / train_batches, step)
+                writer.add_scalar("grad_norm/train", train_grad_norm_sum / train_batches, step)
+            writer.add_scalar("policy_loss/valid", valid_policy, step)
+            writer.add_scalar("value_loss/valid", valid_value, step)
+            writer.add_scalar("total_loss/valid", valid_loss, step)
+            writer.add_scalar("time/epoch_seconds", epoch_time, step)
+            writer.add_scalar("time/selfplay_seconds", gen_time, step)
+            writer.add_scalar("time/compute_seconds", compute_time, step)
+            writer.add_scalar("time/eval_seconds", eval_time, step)
+            writer.add_scalar("time/total_seconds", total_time, step)
+            writer.add_scalar("time/selfplay_fraction", gen_time / max(epoch_time, 1e-9), step)
+            writer.add_scalar("data/games_seen", games_seen, step)
+            writer.add_scalar("data/positions_seen", positions_seen, step)
+            writer.add_scalar("data/positions_this_epoch", len(all_examples), step)
+            writer.add_scalar("data/examples_in_buffer", len(combined_examples), step)
+            if total_positions:
+                writer.add_scalar("data/policy_mask_fraction", masked_positions / total_positions, step)
+            writer.add_scalar("lr", optimizer.param_groups[0]['lr'], step)
+            for param_name, param in self.policy_value_network.named_parameters():
+                writer.add_histogram(f"weights/{param_name}", param.detach().cpu(), step)
+            writer.flush()
 
             with open("self-play.txt", "a") as log_file:
                 log_file.write(f"elapsed: {time.time() - start_time:.2f}s, epoch: {epoch}, test loss: {valid_loss:.6f}, lr: {optimizer.param_groups[0]['lr']}\n")
 
     
         # if old network is better, update current policy network
-        print('pitting old nn against new nn...')
+        print(f'[pit] pitting old nn against new nn over {num_testing_games} games...')
+        pit_start = time.time()
         pit_result = pit(self.policy_value_network, old_nn, num_testing_games, num_simulations, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, temperature)
-        if(pit_result <= improvement_threshold): 
+        pit_time = time.time() - pit_start
+        print(
+            f"[pit] score {pit_result} vs threshold {improvement_threshold} "
+            f"in {pit_time:.1f}s | run {time.time() - start_time:.1f}s"
+        )
+        writer.add_scalar("pit/score", pit_result, num_training_iterations)
+        writer.add_scalar("pit/seconds", pit_time, num_training_iterations)
+        if(pit_result <= improvement_threshold):
             self.policy_value_network = old_nn
             print(f'new nn underperformed old nn, with score of {pit_result}')
             print('new nn did not replace old nn')
-            
+
         print(f'new nn outperformed old nn, {pit_result}')
         print('new nn replaced old nn')
+        writer.add_text("pit/result", f"score={pit_result} threshold={improvement_threshold}", num_training_iterations)
+        writer.flush()
+        writer.close()
+        print(f"[log] run finished in {time.time() - start_time:.1f}s, tensorboard logs at {log_dir}")
 
 
 
