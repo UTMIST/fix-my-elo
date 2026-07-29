@@ -12,7 +12,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import StepLR
-from torch.utils.tensorboard import SummaryWriter
 from multiprocessing import get_context
 import torch.multiprocessing as mp
 from services.engine_service.requirements.monte_carlo_tree_search import Monte_Carlo_Tree_Search
@@ -22,6 +21,13 @@ try:
     from stockfish import Stockfish
 except ImportError:
     Stockfish = None
+
+# tensorboard is training-only, so it is not installed in the inference image.
+# Importing it at module scope would crash engine_server on startup.
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ImportError:
+    SummaryWriter = None
 
 
 # Use file-backed storage for tensor sharing in multiprocessing instead of /dev/shm
@@ -40,11 +46,15 @@ class Agent:
     Agent that uses MCTS with policy and value networks to select moves.
     '''
 
-    def __init__(self, policy_value_network, c_puct, dirichlet_alpha, dirichlet_epsilon, stockfish_path=None):
+    def __init__(self, policy_value_network, c_puct, dirichlet_alpha, dirichlet_epsilon, stockfish_path=None, eval_batch_size=None):
         self.policy_value_network = policy_value_network
         self.c_puct = c_puct
         self.dirichlet_alpha = dirichlet_alpha
         self.dirichlet_epsilon = dirichlet_epsilon
+        # How many leaf positions MCTS queues before one batched forward pass.
+        # None defers to Monte_Carlo_Tree_Search's own default, so callers that
+        # omit it keep that behaviour. engine_server sets it from MCTS_BATCH_SIZE.
+        self.eval_batch_size = eval_batch_size
         self.rng = np.random.default_rng()
         self.stockfish = None
 
@@ -72,7 +82,8 @@ class Agent:
         device = next(self.policy_value_network.parameters()).device
         self.policy_value_network.eval()
         board = game_state.fen()
-        mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set(), mcts_policy_temperature=mcts_policy_temperature, mcts_temperature=mcts_temperature) # generate new mcts object to save memory
+        batch_kwargs = {} if self.eval_batch_size is None else {"eval_batch_size": self.eval_batch_size}
+        mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set(), mcts_policy_temperature=mcts_policy_temperature, mcts_temperature=mcts_temperature, **batch_kwargs) # generate new mcts object to save memory
         mcts.run_simulations(game_state, num_simulations)
 
         moves = list(mcts.frequency_action[board].keys())
@@ -84,24 +95,44 @@ class Agent:
             if counts.size == 0:
                 raise RuntimeError(f"MCTS returned no visit counts for board: {board}")
 
-            # evals/priors must be indexed by `moves`, not by legal_moves: frequency_action
-            # is keyed in visit order and only holds moves MCTS actually expanded.
-            evals = np.fromiter((mcts.expected_reward[board][move] for move in moves), dtype=np.float32, count=len(moves))
+            # report every legal move, not just the ones MCTS expanded, so callers can do
+            # their own filtering and ranking. A move the search never reached comes back
+            # with 0 visits, 0 share and 0.0 eval: visits == 0 means the eval holds no
+            # search information and only `prior` says anything about that move.
+            # NOTE: `moves`/`counts` above stay the expanded-only set, because they are
+            # what picks the move below. Only this reporting table covers all legal moves.
+            legal_moves = mcts.legal_moves_cache.get(board) or [mv.uci() for mv in game_state.legal_moves]
+
+            # frequency_action / expected_reward are defaultdicts holding only expanded
+            # moves, so read them with .get() to avoid inserting keys for the rest.
+            visit_by_move = mcts.frequency_action[board]
+            reward_by_move = mcts.expected_reward[board]
+            all_counts = np.fromiter((visit_by_move.get(mv, 0) for mv in legal_moves), dtype=np.float64, count=len(legal_moves))
+            evals = np.fromiter((reward_by_move.get(mv, 0.0) for mv in legal_moves), dtype=np.float32, count=len(legal_moves))
 
             # the softmax has to be normalised over every legal move, the way the search
-            # normalised it, so compute over the full set and index down to `moves`.
-            # is_root=True reuses this search's cached noise, so the reported prior is
-            # the one PUCT actually saw rather than a clean re-derivation.
-            legal_moves = mcts.legal_moves_cache.get(board) or [mv.uci() for mv in game_state.legal_moves]
+            # normalised it. is_root=True reuses this search's cached noise, so the
+            # reported prior is the one PUCT actually saw rather than a clean re-derivation.
             all_priors = mcts.priors_for(board, legal_moves, is_root=True)
             if all_priors is None:
-                priors = np.zeros(len(moves), dtype=np.float32)
+                priors = np.zeros(len(legal_moves), dtype=np.float32)
             else:
                 prior_by_move = dict(zip(legal_moves, all_priors))
-                priors = np.fromiter((prior_by_move.get(move, 0.0) for move in moves), dtype=np.float32, count=len(moves))
+                priors = np.fromiter((prior_by_move.get(mv, 0.0) for mv in legal_moves), dtype=np.float32, count=len(legal_moves))
 
-            combined = zip(moves, counts.tolist(), evals.tolist(), priors.tolist())
-            combined = sorted(combined, key=lambda x: x[1], reverse=True)
+            # visit share of the search, so callers get a move's weight without having to
+            # re-sum the counts themselves. The unexpanded moves contribute 0, so this is
+            # still the search's own total and the shares sum to 1.0.
+            total_visits = all_counts.sum()
+            shares = all_counts / total_visits if total_visits > 0 else np.zeros_like(all_counts)
+
+            combined = zip(legal_moves, all_counts.tolist(), shares.tolist(), evals.tolist(), priors.tolist())
+            # visits first, then prior, so the 0-visit tail comes back ordered by policy
+            # preference rather than by arbitrary legal-move order. This ordering is for
+            # reporting only: on a visit tie the top row need not be the move returned,
+            # since selection below breaks ties by argmax (i.e. expansion order). Callers
+            # wanting the engine's actual pick must read the returned move, not row 0.
+            combined = sorted(combined, key=lambda x: (x[1], x[4]), reverse=True)
             checked = sum(1 for item in combined if item[1] > 0)
             # print(f"tested {checked} moves out of ", len(list(game_state.legal_moves)))
 
@@ -612,6 +643,13 @@ class Agent:
         # 22 on the lab machine, but capped to the cores actually available so a
         # CPU-only box does not spawn more MCTS workers than it can run
         workers = max(1, min(22, os.cpu_count() or 1))
+
+        if SummaryWriter is None:
+            raise ImportError(
+                "training_self_play needs tensorboard for logging. "
+                "Install it with `pip install tensorboard` (it is intentionally "
+                "left out of engine_requirements.txt to keep the inference image small)."
+            )
 
         run_name = time.strftime("%Y%m%d-%H%M%S")
         log_dir = os.path.join(os.path.dirname(__file__), "runs", run_name)

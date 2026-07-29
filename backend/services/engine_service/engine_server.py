@@ -146,18 +146,31 @@ def post(payload: EnginePayload):
     except Exception as exc:
         raise HTTPException(500, {"error": f"Engine failure: {exc}"})
 
-    # `combined` is a list of (move, count, eval, prior) tuples where the numeric
-    # fields are numpy scalars (float32/float64) that json can't serialize. Convert
-    # to native Python types so JSONResponse can encode them.
+    # `combined` is a list of (move, count, share, eval, prior) tuples covering every
+    # legal move, sorted by visits then prior, so the frontend can filter and rank it
+    # however it likes. Moves the search never expanded carry count 0, share 0.0 and
+    # eval 0.0 -- for those only `prior` is meaningful.
+    # The numeric fields are numpy scalars (float32/float64) that json can't serialize,
+    # so convert to native Python types for JSONResponse.
     counts = [
         {
             "move": str(move),
             "count": float(count),
+            "share": float(share),
             "eval": float(evaluation),
             "prior": float(prior),
         }
-        for move, count, evaluation, prior in combined
+        for move, count, share, evaluation, prior in combined
     ]
+
+    # the value network's read on the position itself, reported alongside the
+    # per-move stats the same way eval_test's header line does. One extra forward
+    # pass, negligible next to the search that just ran.
+    try:
+        static_eval = float(AGENT.evaluate_value(fen))
+    except Exception as exc:
+        logger.warning(f" static eval failed: {exc}")
+        static_eval = None
 
     return JSONResponse(
         {
@@ -166,6 +179,7 @@ def post(payload: EnginePayload):
             "san": san,
             "fen": fen,
             "numSimulations": num_sim,
+            "staticEval": static_eval,
         },
         200,
     )

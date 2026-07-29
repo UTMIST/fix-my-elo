@@ -102,7 +102,7 @@ def main() -> int:
             )
 
         move_uci = str(output[0])
-        explored_moves = output[1] # each item in this array looks like [move uci, #times explored, expected value, policy prior]
+        explored_moves = output[1] # each item in this array looks like [move uci, #times explored, visit share, expected value, policy prior]
 
         move_obj = chess.Move.from_uci(move_uci)
         san = board.san(move_obj)
