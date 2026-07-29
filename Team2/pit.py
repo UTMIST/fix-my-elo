@@ -42,6 +42,8 @@ if __name__ == "__main__":
             dirichlet_alpha=0.3,
             dirichlet_epsilon=0.0,
             temperature=TEMPERATURE,
+            name1=MODEL_PATH_1,
+            name2=MODEL_PATH_2,
         )
 
     print(f"[pit] model1 score: {score:+d} over {NUM_GAMES} games (wins - losses)")

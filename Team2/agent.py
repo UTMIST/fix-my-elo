@@ -978,7 +978,7 @@ def stockfish_self_play_worker(args):
         return agent.stockfish_self_play(num_simulations, temperature)
 
 
-def pit(policy_value_network1, policy_value_network2, num_games, num_simulations, c_puct, dirichlet_alpha, dirichlet_epsilon, temperature):
+def pit(policy_value_network1, policy_value_network2, num_games, num_simulations, c_puct, dirichlet_alpha, dirichlet_epsilon, temperature, name1="agent1", name2="agent2"):
     '''
     pit two chess agents w/ two different neural net bases against eachother by playing games,
     returns the difference between agent1 wins and agent2 wins
@@ -1001,11 +1001,13 @@ def pit(policy_value_network1, policy_value_network2, num_games, num_simulations
         white = [agent1, agent2][choice]
         black = [agent1, agent2][1 - choice]
 
-        game.headers["White"] = "agent1" if white == agent1 else "agent2"
-        game.headers["Black"] = "agent2" if black == agent2 else "agent1"
+        white_name = name1 if white == agent1 else name2
+        black_name = name2 if black == agent2 else name1
+        game.headers["White"] = white_name
+        game.headers["Black"] = black_name
 
         move_count = 0
-        print(f'playing testing game {i}, white: {"agent1" if white == agent1 else "agent2"}, black: {"agent2" if black == agent2 else "agent1"}')
+        print(f'playing testing game {i}, white: {white_name}, black: {black_name}')
 
         while True:  # infinite loop until terminal state
             # white move
