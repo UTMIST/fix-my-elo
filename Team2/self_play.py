@@ -10,10 +10,12 @@ if __name__ == "__main__":
     # SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     # MODEL_PATH_1 = os.path.join(SCRIPT_DIR, "model_files", "lab_trained_66.pth")
 
-    device = torch.device("cuda")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"[device] using {device}")
     model1 = SLPolicyValueNetwork().to(device)
-    # model1.load_state_dict(torch.load("model_files/SL_stockfish_trained_old.pth", map_location=torch.device("cuda"))["model"])
-    model1.load_state_dict(torch.load("LGB_2400ELO_70k.pth", map_location=torch.device("cuda"))["model"])
+    # map_location follows the device so a GPU-saved checkpoint still loads on a CPU-only box
+    # model1.load_state_dict(torch.load("model_files/SL_stockfish_trained_old.pth", map_location=device)["model"])
+    model1.load_state_dict(torch.load("LGB_2400ELO_70k.pth", map_location=device)["model"])
 
     # only train the first model
     agent = Agent(policy_value_network=model1, c_puct=1.0, dirichlet_alpha=0.3, dirichlet_epsilon=0.3)

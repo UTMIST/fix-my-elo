@@ -56,7 +56,7 @@ def agent_vs_stockfish(num_games, num_simulations, path_to_output):
     MODEL_PATH_1 = os.path.join(SCRIPT_DIR, "model_files", "lab_trained_66.pth")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model1 = SLPolicyValueNetwork().to(device)
-    model1.load_state_dict(torch.load(MODEL_PATH_1, map_location=torch.device("cuda"))["model"])
+    model1.load_state_dict(torch.load(MODEL_PATH_1, map_location=device)["model"])
     agent = Agent(policy_value_network=model1, c_puct=1.0, dirichlet_alpha=0.3, dirichlet_epsilon=0.25)
 
     stockfish = Stockfish(path=r"C:\Users\masar\Downloads\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe")
