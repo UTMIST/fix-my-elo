@@ -996,7 +996,8 @@ def pit(policy_value_network1, policy_value_network2, num_games, num_simulations
         game = chess.pgn.Game()
         node = game
 
-        choice = np.random.default_rng().choice([0, 1])  # random choice for which agent is white or black
+        # choice = np.random.default_rng().choice([0, 1])  # random choice for which agent is white or black
+        choice = i % 2
         white = [agent1, agent2][choice]
         black = [agent1, agent2][1 - choice]
 
