@@ -5,7 +5,6 @@ import os
 import shutil
 from datetime import datetime
 import numpy as np
-import pickle
 import time
 import torch
 import torch.nn as nn
@@ -13,6 +12,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import StepLR
+from torch.utils.tensorboard import SummaryWriter
 from multiprocessing import get_context
 import torch.multiprocessing as mp
 from services.engine_service.requirements.monte_carlo_tree_search import Monte_Carlo_Tree_Search
@@ -22,6 +22,7 @@ try:
     from stockfish import Stockfish
 except ImportError:
     Stockfish = None
+
 
 # Use file-backed storage for tensor sharing in multiprocessing instead of /dev/shm
 mp.set_sharing_strategy('file_system')
@@ -39,15 +40,11 @@ class Agent:
     Agent that uses MCTS with policy and value networks to select moves.
     '''
 
-    def __init__(self, policy_value_network, c_puct, dirichlet_alpha, dirichlet_epsilon, stockfish_path=None, eval_batch_size=64):
+    def __init__(self, policy_value_network, c_puct, dirichlet_alpha, dirichlet_epsilon, stockfish_path=None):
         self.policy_value_network = policy_value_network
         self.c_puct = c_puct
         self.dirichlet_alpha = dirichlet_alpha
         self.dirichlet_epsilon = dirichlet_epsilon
-        # How many leaf positions MCTS queues before one batched forward pass.
-        # Default mirrors Monte_Carlo_Tree_Search's own default so callers that
-        # omit it keep the previous behaviour.
-        self.eval_batch_size = eval_batch_size
         self.rng = np.random.default_rng()
         self.stockfish = None
 
@@ -68,42 +65,45 @@ class Agent:
             )
 
 
-    def select_move(self, game_state, num_simulations, temperature=0.0, mcts_policy_temperature=0.1, mcts_temperature=0.1, debug=False):
+    def select_move(self, game_state, num_simulations, temperature=0.0, mcts_policy_temperature=1.0, mcts_temperature=1.0, debug=False):
         '''
         Selects the best move based on the policy network's predictions.
         '''
         device = next(self.policy_value_network.parameters()).device
         self.policy_value_network.eval()
         board = game_state.fen()
-        mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set(), mcts_policy_temperature=mcts_policy_temperature, mcts_temperature=mcts_temperature, eval_batch_size=self.eval_batch_size) # generate new mcts object to save memory
+        mcts = Monte_Carlo_Tree_Search(self.policy_value_network, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, set(), mcts_policy_temperature=mcts_policy_temperature, mcts_temperature=mcts_temperature) # generate new mcts object to save memory
         mcts.run_simulations(game_state, num_simulations)
 
-        legal_moves = [move.uci() for move in game_state.legal_moves]
         moves = list(mcts.frequency_action[board].keys())
         counts = np.array(list(mcts.frequency_action[board].values()), dtype=np.float64)
-        evals = np.fromiter((mcts.expected_reward[game_state.fen()][move] for move in legal_moves), dtype=np.float32, count=len(legal_moves))
-
-        move_labels = np.fromiter((mcts._get_move_label(move) for move in legal_moves), dtype=np.int64, count=len(legal_moves))
-        p = mcts.policy_cache.get(board)
-        priors = p[0, move_labels].detach().numpy().astype(np.float32, copy=False)
 
         combined = []
         # debuggning (show move visits + counts)
         if debug:
-            combined = zip(moves, counts, evals, priors)
-            combined = sorted(combined, key=lambda x: x[1].item(), reverse=True)
-            checked = 0
-            for i, item in enumerate(combined):
-                # if i == 5:
-                #     break
-                # print(f"move: {item[0]}, count: {item[1].item():.5f}, ev: {item[2].item():.5f}, policy logit: {item[3].item():.5f}")
-                if item[1].item() > 0:
-                    checked += 1
-            # print("final eval: ", mcts.expected_reward[board][combined[0][0]])
-
             if counts.size == 0:
                 raise RuntimeError(f"MCTS returned no visit counts for board: {board}")
-            # print(f"tested {checked} moves out of ",len(list(game_state.legal_moves)))
+
+            # evals/priors must be indexed by `moves`, not by legal_moves: frequency_action
+            # is keyed in visit order and only holds moves MCTS actually expanded.
+            evals = np.fromiter((mcts.expected_reward[board][move] for move in moves), dtype=np.float32, count=len(moves))
+
+            # the softmax has to be normalised over every legal move, the way the search
+            # normalised it, so compute over the full set and index down to `moves`.
+            # is_root=True reuses this search's cached noise, so the reported prior is
+            # the one PUCT actually saw rather than a clean re-derivation.
+            legal_moves = mcts.legal_moves_cache.get(board) or [mv.uci() for mv in game_state.legal_moves]
+            all_priors = mcts.priors_for(board, legal_moves, is_root=True)
+            if all_priors is None:
+                priors = np.zeros(len(moves), dtype=np.float32)
+            else:
+                prior_by_move = dict(zip(legal_moves, all_priors))
+                priors = np.fromiter((prior_by_move.get(move, 0.0) for move in moves), dtype=np.float32, count=len(moves))
+
+            combined = zip(moves, counts.tolist(), evals.tolist(), priors.tolist())
+            combined = sorted(combined, key=lambda x: x[1], reverse=True)
+            checked = sum(1 for item in combined if item[1] > 0)
+            # print(f"tested {checked} moves out of ", len(list(game_state.legal_moves)))
 
         if temperature == 0:
             idx = int(np.argmax(counts))
@@ -401,7 +401,7 @@ class Agent:
             self.agent_vs_stockfish(2, 1000, "pgn_files/LGB70k_examplar_games.pgn", epoch)
 
 
-    def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0):
+    def agent_vs_stockfish(self, num_games, num_simulations, path_to_output, epoch=0, mcts_policy_temperature=1.0, mcts_temperature=1.0):
         """
         export a game between stockfish and the model. stockfish starts first.
         """
@@ -431,7 +431,8 @@ class Agent:
                     moves.append(move)
                     board.push_uci(move)
                 else:
-                    move = self.select_move(game_state=board, num_simulations=num_simulations,temperature=0.0, debug=False)[0]
+                    move = self.select_move(game_state=board, num_simulations=num_simulations, temperature=0.0, debug=False,
+                                            mcts_policy_temperature=mcts_policy_temperature, mcts_temperature=mcts_temperature)[0]
                     moves.append(move)
                     board.push_uci(move)
 
@@ -600,20 +601,47 @@ class Agent:
         policy_criterion = nn.CrossEntropyLoss() # softmax regression loss function
         value_criterion = nn.SmoothL1Loss()
         optimizer = optim.AdamW(
-        [{'params': self.policy_value_network.parameters(), 'lr': 1e-3, 'initial_lr': 1e-3}],
-        weight_decay=1e-4
+        [{'params': self.policy_value_network.parameters(), 'lr': 1e-2, 'initial_lr': 1e-2}]
         )
 
         scheduler = StepLR(optimizer=optimizer, step_size=50, gamma=0.1)
         start_time = time.time()
-        
+
         recent_epoch_examples = []
         max_epoch_buffer = 3
-        
+        # 22 on the lab machine, but capped to the cores actually available so a
+        # CPU-only box does not spawn more MCTS workers than it can run
+        workers = max(1, min(22, os.cpu_count() or 1))
+
+        run_name = time.strftime("%Y%m%d-%H%M%S")
+        log_dir = os.path.join(os.path.dirname(__file__), "runs", run_name)
+        writer = SummaryWriter(log_dir=log_dir)
+        print(f"[log] tensorboard writing to {log_dir}")
+        # the settings this run's curves came from, so a run is interpretable months
+        # later without digging up the commit it was launched from
+        writer.add_text(
+            "config",
+            f"num_training_iterations={num_training_iterations} num_games={num_games} "
+            f"num_simulations={num_simulations} temperature={temperature} "
+            f"resign_moves={resign_moves} resign_threshold={resign_threshold} "
+            f"train_to_test_ratio={train_to_test_ratio} "
+            f"lr={optimizer.param_groups[0]['lr']} c_puct={self.c_puct} "
+            f"dirichlet_alpha={self.dirichlet_alpha} dirichlet_epsilon={self.dirichlet_epsilon} "
+            f"workers={workers} max_epoch_buffer={max_epoch_buffer} "
+            f"num_testing_games={num_testing_games} improvement_threshold={improvement_threshold} "
+            f"device={device}",
+            0,
+        )
+
+        checkpoint_path = "self_play_trained.pth"
+        games_seen = 0
+        positions_seen = 0
+
         for epoch in range(num_training_iterations):
             all_examples = []
+            epoch_start = time.time()
             print(f'starting training iteration {epoch}/{num_training_iterations}')
-            
+
             model_state_dict = {
                 k: v.cpu()
                 for k, v in self.policy_value_network.state_dict().items()
@@ -634,16 +662,31 @@ class Agent:
             ]
 
             ctx = get_context("spawn")  # required for PyTorch safety?
-            
-            workers = 22
-            print(f"completed {0}/{num_games} games, {time.time() - start_time:.2f} seconds elapsed")
-            
+
+            print(f"[gen] epoch {epoch + 1}: generating {num_games} self-play games on {workers} workers")
+            gen_start = time.time()
+
             with ctx.Pool(processes=workers) as pool:
                 for i, game_examples in enumerate(pool.imap_unordered(self_play_worker, args), start=1):
                     all_examples.extend(game_examples)
                     if i % workers == 0 or i == num_games:
-                        print(f"  generated {i}/{num_games} games — elapsed: {time.time() - start_time:.2f}s")
+                        # rate comes off this epoch's generation only, so it is not
+                        # dragged down by time spent training in earlier epochs
+                        rate = i / max(time.time() - gen_start, 1e-9)
+                        print(
+                            f"  [gen] {i}/{num_games} games ({i / num_games * 100:.1f}%) "
+                            f"{len(all_examples):,} positions | {rate:.2f} games/s | "
+                            f"epoch {time.time() - epoch_start:.1f}s | run {time.time() - start_time:.1f}s"
+                        )
 
+            gen_time = time.time() - gen_start
+            games_seen += num_games
+            positions_seen += len(all_examples)
+            print(
+                f"[gen] epoch {epoch + 1} done: {num_games} games, {len(all_examples):,} positions "
+                f"in {gen_time:.1f}s ({gen_time / max(num_games, 1):.2f}s/game, "
+                f"{len(all_examples) / max(num_games, 1):.1f} positions/game)"
+            )
 
             recent_epoch_examples.append(all_examples)
             if len(recent_epoch_examples) > max_epoch_buffer:
@@ -654,8 +697,22 @@ class Agent:
                 combined_examples.extend(ex_list)
             train_dataloader, test_dataloader = examples_to_dataset(combined_examples, train_to_test_ratio)
 
-            print(f"[Selft-play] training on collected examples using {len(recent_epoch_examples)} epochs of data")
+            num_train_batches = len(train_dataloader)
+            print(
+                f"[train] epoch {epoch + 1}: {len(combined_examples):,} examples from "
+                f"{len(recent_epoch_examples)} epochs of data, {num_train_batches} minibatches"
+            )
             self.policy_value_network.train()
+            train_policy_sum = 0.0
+            train_value_sum = 0.0
+            train_loss_sum = 0.0
+            train_grad_norm_sum = 0.0
+            # positions the policy head actually trains on, since the mask drops
+            # every example whose value target is not 1
+            masked_positions = 0
+            total_positions = 0
+            train_batches = 0
+            compute_start = time.time()
             for batch_idx, (data, target) in enumerate(train_dataloader):
                 data = data.to(device)
                 batch_move_target = target[:, 0].to(device)
@@ -674,13 +731,44 @@ class Agent:
 
                 optimizer.zero_grad()
                 loss.backward()
+                grad_norm = torch.norm(
+                    torch.stack([
+                        p.grad.detach().norm(2)
+                        for p in self.policy_value_network.parameters()
+                        if p.grad is not None
+                    ]),
+                    2,
+                )
                 optimizer.step()
 
+                policy_l = policy_loss.item()
+                value_l = value_loss.item()
+                total_l = policy_l + value_l
+                grad_norm_l = grad_norm.item()
+                train_policy_sum += policy_l
+                train_value_sum += value_l
+                train_loss_sum += total_l
+                train_grad_norm_sum += grad_norm_l
+                masked_positions += int(mask.sum().item())
+                total_positions += int(mask.numel())
+                train_batches += 1
+
                 if batch_idx % 100 == 0:
-                    print(f"  [train] batch {batch_idx+1}/{len(train_dataloader)} loss: {loss.item():.6f}")
+                    print(
+                        f"  [train] batch {batch_idx + 1}/{num_train_batches} "
+                        f"({(batch_idx + 1) / max(num_train_batches, 1) * 100:.1f}%) "
+                        f"policy: {policy_l:.4f} value: {value_l:.4f} total: {total_l:.4f} "
+                        f"grad_norm: {grad_norm_l:.4f} "
+                        f"elapsed: {time.time() - epoch_start:.1f}s"
+                    )
+
+            compute_time = time.time() - compute_start
 
             self.policy_value_network.eval()
-            test_loss = 0
+            test_policy_sum = 0.0
+            test_value_sum = 0.0
+            test_loss_sum = 0.0
+            eval_start = time.time()
 
             with torch.no_grad():
                 for batch_idx, (data, target) in enumerate(test_dataloader):
@@ -691,10 +779,17 @@ class Agent:
                     pred_policy, pred_val = self.policy_value_network(data)
                     policy_loss = policy_criterion(pred_policy, batch_move_target)  # calculate loss for policy
                     value_loss = value_criterion(pred_val, batch_val_target) # calculate loss for value
-                    loss = policy_loss + value_loss
-                    test_loss += loss
+                    policy_l = policy_loss.item()
+                    value_l = value_loss.item()
+                    test_policy_sum += policy_l
+                    test_value_sum += value_l
+                    test_loss_sum += policy_l + value_l
 
-            valid_loss = test_loss / len(test_dataloader)
+            eval_time = time.time() - eval_start
+            num_test_batches = max(len(test_dataloader), 1)
+            valid_policy = test_policy_sum / num_test_batches
+            valid_value = test_value_sum / num_test_batches
+            valid_loss = test_loss_sum / num_test_batches
             scheduler.step()
 
             print('epoch: {}, test loss: {:.6f}, lr: {}'.format(
@@ -702,28 +797,113 @@ class Agent:
                 valid_loss,
                 optimizer.param_groups[0]['lr']
                 ))
+            print(
+                "  valid  policy {:.6f} | value {:.6f} | total {:.6f}".format(
+                    valid_policy, valid_value, valid_loss
+                )
+            )
+            if train_batches:
+                print(
+                    "  train  policy {:.6f} | value {:.6f} | total {:.6f} | grad_norm {:.4f}".format(
+                        train_policy_sum / train_batches,
+                        train_value_sum / train_batches,
+                        train_loss_sum / train_batches,
+                        train_grad_norm_sum / train_batches,
+                    )
+                )
+            if total_positions:
+                print(
+                    "  policy head trained on {:,}/{:,} positions ({:.1f}% survived the value==1 mask)".format(
+                        masked_positions, total_positions,
+                        masked_positions / total_positions * 100,
+                    )
+                )
+
+            epoch_time = time.time() - epoch_start
+            total_time = time.time() - start_time
+            other = epoch_time - gen_time - compute_time - eval_time
+            print(
+                "  breakdown: selfplay {:.1f}s ({:.0f}%) | compute {:.1f}s ({:.0f}%) | "
+                "eval {:.1f}s ({:.0f}%) | other {:.1f}s | epoch {:.1f}s | run {:.1f}s".format(
+                    gen_time, gen_time / max(epoch_time, 1e-9) * 100,
+                    compute_time, compute_time / max(epoch_time, 1e-9) * 100,
+                    eval_time, eval_time / max(epoch_time, 1e-9) * 100,
+                    other, epoch_time, total_time,
+                )
+            )
+
+            save_start = time.time()
+            tmp_path = checkpoint_path + ".tmp"
             torch.save({
                 "model": self.policy_value_network.state_dict(),
                 "optimizer": optimizer.state_dict(),
-                "epoch": epoch, 
+                "epoch": epoch,
                 "batch": batch_idx,
-            }, "self_play_trained.pth")
-            print('model checkpoint saved')
+                # enough to reconstruct how much self-play these weights saw
+                "num_games": num_games,
+                "num_simulations": num_simulations,
+                "games_seen": games_seen,
+                "positions_seen": positions_seen,
+            }, tmp_path)
+            # rename over the old file so a crash mid-save cannot leave a truncated checkpoint
+            os.replace(tmp_path, checkpoint_path)
+            print(
+                f"[ckpt] epoch {epoch + 1} batch {batch_idx} | {games_seen:,} games / "
+                f"{positions_seen:,} positions seen | saved in {time.time() - save_start:.1f}s"
+            )
+
+            step = epoch + 1
+            if train_batches:
+                writer.add_scalar("policy_loss/train", train_policy_sum / train_batches, step)
+                writer.add_scalar("value_loss/train", train_value_sum / train_batches, step)
+                writer.add_scalar("total_loss/train", train_loss_sum / train_batches, step)
+                writer.add_scalar("grad_norm/train", train_grad_norm_sum / train_batches, step)
+            writer.add_scalar("policy_loss/valid", valid_policy, step)
+            writer.add_scalar("value_loss/valid", valid_value, step)
+            writer.add_scalar("total_loss/valid", valid_loss, step)
+            writer.add_scalar("time/epoch_seconds", epoch_time, step)
+            writer.add_scalar("time/selfplay_seconds", gen_time, step)
+            writer.add_scalar("time/compute_seconds", compute_time, step)
+            writer.add_scalar("time/eval_seconds", eval_time, step)
+            writer.add_scalar("time/total_seconds", total_time, step)
+            writer.add_scalar("time/selfplay_fraction", gen_time / max(epoch_time, 1e-9), step)
+            writer.add_scalar("data/games_seen", games_seen, step)
+            writer.add_scalar("data/positions_seen", positions_seen, step)
+            writer.add_scalar("data/positions_this_epoch", len(all_examples), step)
+            writer.add_scalar("data/examples_in_buffer", len(combined_examples), step)
+            if total_positions:
+                writer.add_scalar("data/policy_mask_fraction", masked_positions / total_positions, step)
+            writer.add_scalar("lr", optimizer.param_groups[0]['lr'], step)
+            for param_name, param in self.policy_value_network.named_parameters():
+                writer.add_histogram(f"weights/{param_name}", param.detach().cpu(), step)
+            writer.flush()
 
             with open("self-play.txt", "a") as log_file:
                 log_file.write(f"elapsed: {time.time() - start_time:.2f}s, epoch: {epoch}, test loss: {valid_loss:.6f}, lr: {optimizer.param_groups[0]['lr']}\n")
 
     
         # if old network is better, update current policy network
-        print('pitting old nn against new nn...')
+        print(f'[pit] pitting old nn against new nn over {num_testing_games} games...')
+        pit_start = time.time()
         pit_result = pit(self.policy_value_network, old_nn, num_testing_games, num_simulations, self.c_puct, self.dirichlet_alpha, self.dirichlet_epsilon, temperature)
-        if(pit_result <= improvement_threshold): 
+        pit_time = time.time() - pit_start
+        print(
+            f"[pit] score {pit_result} vs threshold {improvement_threshold} "
+            f"in {pit_time:.1f}s | run {time.time() - start_time:.1f}s"
+        )
+        writer.add_scalar("pit/score", pit_result, num_training_iterations)
+        writer.add_scalar("pit/seconds", pit_time, num_training_iterations)
+        if(pit_result <= improvement_threshold):
             self.policy_value_network = old_nn
             print(f'new nn underperformed old nn, with score of {pit_result}')
             print('new nn did not replace old nn')
-            
+
         print(f'new nn outperformed old nn, {pit_result}')
         print('new nn replaced old nn')
+        writer.add_text("pit/result", f"score={pit_result} threshold={improvement_threshold}", num_training_iterations)
+        writer.flush()
+        writer.close()
+        print(f"[log] run finished in {time.time() - start_time:.1f}s, tensorboard logs at {log_dir}")
 
 
 
@@ -798,7 +978,7 @@ def stockfish_self_play_worker(args):
         return agent.stockfish_self_play(num_simulations, temperature)
 
 
-def pit(policy_value_network1, policy_value_network2, num_games, num_simulations, c_puct, dirichlet_alpha, dirichlet_epsilon, temperature):
+def pit(policy_value_network1, policy_value_network2, num_games, num_simulations, c_puct, dirichlet_alpha, dirichlet_epsilon, temperature, name1="agent1", name2="agent2"):
     '''
     pit two chess agents w/ two different neural net bases against eachother by playing games,
     returns the difference between agent1 wins and agent2 wins
@@ -816,19 +996,22 @@ def pit(policy_value_network1, policy_value_network2, num_games, num_simulations
         game = chess.pgn.Game()
         node = game
 
-        choice = np.random.default_rng().choice([0, 1])  # random choice for which agent is white or black
+        # choice = np.random.default_rng().choice([0, 1])  # random choice for which agent is white or black
+        choice = i % 2
         white = [agent1, agent2][choice]
         black = [agent1, agent2][1 - choice]
 
-        game.headers["White"] = "agent1" if white == agent1 else "agent2"
-        game.headers["Black"] = "agent2" if black == agent2 else "agent1"
+        white_name = name1 if white == agent1 else name2
+        black_name = name2 if black == agent2 else name1
+        game.headers["White"] = white_name
+        game.headers["Black"] = black_name
 
         move_count = 0
-        print(f'playing testing game {i}, white: {"agent1" if white == agent1 else "agent2"}, black: {"agent2" if black == agent2 else "agent1"}')
+        print(f'playing testing game {i}, white: {white_name}, black: {black_name}')
 
         while True:  # infinite loop until terminal state
             # white move
-            move = white.select_move(game_state, num_simulations, temperature)
+            move = white.select_move(game_state, num_simulations, temperature)[0]
             game_state.push_uci(move)
             node = node.add_variation(chess.Move.from_uci(move))
             move_count += 1
@@ -848,7 +1031,7 @@ def pit(policy_value_network1, policy_value_network2, num_games, num_simulations
                 break
 
             # black move
-            move = black.select_move(game_state, num_simulations, temperature)
+            move = black.select_move(game_state, num_simulations, temperature)[0]
             game_state.push_uci(move)
             node = node.add_variation(chess.Move.from_uci(move))
             move_count += 1

@@ -10,7 +10,7 @@ class Monte_Carlo_Tree_Search:
     Monte Carlo Tree Search implementation using policy and value networks.
     '''
 
-    def __init__(self, policy_value_network, c_puct, alpha, epsilon, visited, mcts_policy_temperature=1.0, mcts_temperature=1.0, eval_batch_size=64, fpu=4.0):
+    def __init__(self, policy_value_network, c_puct, alpha, epsilon, visited, mcts_policy_temperature=1.0, mcts_temperature=1.0, eval_batch_size=16, fpu=4.0):
         '''
         policy_network: neural network that predicts move probabilities
         value_network: neural network that predicts state value
@@ -39,6 +39,8 @@ class Monte_Carlo_Tree_Search:
         self.move_label_cache = {}
         self.eval_batch_size = max(1, int(eval_batch_size))
         self.rng = np.random.default_rng()
+        # root dirichlet noise, drawn once per search and held fixed (see _root_noise_for)
+        self._root_noise = {}
 
         self._pending_leaf_boards = []
         self._pending_leaf_paths = []
@@ -60,19 +62,39 @@ class Monte_Carlo_Tree_Search:
         return label
 
 
-    def _select_best_move(self, board, legal_moves, is_root):
+    def _root_noise_for(self, board, num_moves):
+        noise = self._root_noise.get(board)
+        if noise is None or len(noise) != num_moves:
+            noise = self.rng.dirichlet([self.alpha] * num_moves).astype(np.float32, copy=False)
+            self._root_noise[board] = noise
+        return noise
+
+
+    def priors_for(self, board, legal_moves, is_root=False):
         p = self.policy_cache.get(board)
         if p is None:
             return None
 
         move_labels = np.fromiter((self._get_move_label(move) for move in legal_moves), dtype=np.int64, count=len(legal_moves)) #mask out illegal moves
-        priors = p[0, move_labels].detach().numpy().astype(np.float32, copy=False) / self.mcts_policy_temperature #apply temperature to policy
+        logits = p[0, move_labels].detach().numpy().astype(np.float32, copy=False)
 
-        if is_root:
-            dirichlet_noise = self.rng.dirichlet([self.alpha] * len(legal_moves)).astype(np.float32, copy=False)
+        logits = logits / max(float(self.mcts_policy_temperature), 1e-8) #apply temperature to policy
+        logits = logits - logits.max()  # subtract max BEFORE exponential
+        priors = np.exp(logits)
+        priors = priors / priors.sum()
+
+        # apply dirichlet noise
+        if is_root and self.epsilon > 0.0:
+            dirichlet_noise = self._root_noise_for(board, len(legal_moves))
             priors = (1 - self.epsilon) * priors + self.epsilon * dirichlet_noise
-        
-        # priors = np.exp(priors) / np.sum(np.exp(priors))
+
+        return priors
+
+
+    def _select_best_move(self, board, legal_moves, is_root):
+        priors = self.priors_for(board, legal_moves, is_root)
+        if priors is None:
+            return None
 
         freq_board = self.frequency_action[board]
         board_ev = self.expected_reward[board]
@@ -86,16 +108,7 @@ class Monte_Carlo_Tree_Search:
         sqrt_total_visits = math.sqrt(float(self.total_visits[board]))
         uct_scores = q_values + self.c_puct * priors * sqrt_total_visits / (1.0 + visits)
 
-        uct_scores = uct_scores / self.mcts_temperature
-
-        # Numerically stable softmax: subtract max BEFORE exponential
-        uct_scores_stable = uct_scores - np.max(uct_scores)
-        exp_uct = np.exp(uct_scores_stable)
-        probs = exp_uct / np.sum(exp_uct)
-
-        # return legal_moves[int(np.argmax(uct_scores))]
-        generator = np.random.default_rng()
-        return generator.choice(legal_moves, p=probs)
+        return legal_moves[int(np.argmax(uct_scores))]
 
 
     def _terminal_value(self, game_state):
@@ -177,6 +190,9 @@ class Monte_Carlo_Tree_Search:
     def run_simulations(self, game_state, num_simulations, eval_batch_size=None):
         batch_size = self.eval_batch_size if eval_batch_size is None else max(1, int(eval_batch_size))
         simulations_done = 0
+        # one draw per search: this search's root gets a fresh sample, and every
+        # simulation below reuses it
+        self._root_noise.clear()
 
         while simulations_done < num_simulations:
             node_type, board, path, payload = self._select_path_to_leaf(game_state.copy())
