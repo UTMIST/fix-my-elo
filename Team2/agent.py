@@ -87,9 +87,18 @@ class Agent:
             # evals/priors must be indexed by `moves`, not by legal_moves: frequency_action
             # is keyed in visit order and only holds moves MCTS actually expanded.
             evals = np.fromiter((mcts.expected_reward[board][move] for move in moves), dtype=np.float32, count=len(moves))
-            move_labels = np.fromiter((mcts._get_move_label(move) for move in moves), dtype=np.int64, count=len(moves))
-            p = mcts.policy_cache.get(board)
-            priors = p[0, move_labels].detach().numpy().astype(np.float32, copy=False)
+
+            # the softmax has to be normalised over every legal move, the way the search
+            # normalised it, so compute over the full set and index down to `moves`.
+            # is_root=True reuses this search's cached noise, so the reported prior is
+            # the one PUCT actually saw rather than a clean re-derivation.
+            legal_moves = mcts.legal_moves_cache.get(board) or [mv.uci() for mv in game_state.legal_moves]
+            all_priors = mcts.priors_for(board, legal_moves, is_root=True)
+            if all_priors is None:
+                priors = np.zeros(len(moves), dtype=np.float32)
+            else:
+                prior_by_move = dict(zip(legal_moves, all_priors))
+                priors = np.fromiter((prior_by_move.get(move, 0.0) for move in moves), dtype=np.float32, count=len(moves))
 
             combined = zip(moves, counts.tolist(), evals.tolist(), priors.tolist())
             combined = sorted(combined, key=lambda x: x[1], reverse=True)
@@ -592,8 +601,7 @@ class Agent:
         policy_criterion = nn.CrossEntropyLoss() # softmax regression loss function
         value_criterion = nn.SmoothL1Loss()
         optimizer = optim.AdamW(
-        [{'params': self.policy_value_network.parameters(), 'lr': 1e-3, 'initial_lr': 1e-3}],
-        weight_decay=1e-4
+        [{'params': self.policy_value_network.parameters(), 'lr': 1e-2, 'initial_lr': 1e-2}]
         )
 
         scheduler = StepLR(optimizer=optimizer, step_size=50, gamma=0.1)
@@ -601,7 +609,9 @@ class Agent:
 
         recent_epoch_examples = []
         max_epoch_buffer = 3
-        workers = 22
+        # 22 on the lab machine, but capped to the cores actually available so a
+        # CPU-only box does not spawn more MCTS workers than it can run
+        workers = max(1, min(22, os.cpu_count() or 1))
 
         run_name = time.strftime("%Y%m%d-%H%M%S")
         log_dir = os.path.join(os.path.dirname(__file__), "runs", run_name)
@@ -998,7 +1008,7 @@ def pit(policy_value_network1, policy_value_network2, num_games, num_simulations
 
         while True:  # infinite loop until terminal state
             # white move
-            move = white.select_move(game_state, num_simulations, temperature)
+            move = white.select_move(game_state, num_simulations, temperature)[0]
             game_state.push_uci(move)
             node = node.add_variation(chess.Move.from_uci(move))
             move_count += 1
@@ -1018,7 +1028,7 @@ def pit(policy_value_network1, policy_value_network2, num_games, num_simulations
                 break
 
             # black move
-            move = black.select_move(game_state, num_simulations, temperature)
+            move = black.select_move(game_state, num_simulations, temperature)[0]
             game_state.push_uci(move)
             node = node.add_variation(chess.Move.from_uci(move))
             move_count += 1
