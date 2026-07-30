@@ -6,7 +6,8 @@ Runs as a normal python script so multiprocessing inside MCTS works properly
 Examples:
     python Team2/play_against_model.py human
     python Team2/play_against_model.py human --color black --sims 800
-    python Team2/play_against_model.py stockfish --depth 15
+    python Team2/play_against_model.py human -v --top-n 10
+    python Team2/play_against_model.py stockfish --depth 15 -v
     python Team2/play_against_model.py batch --games 2 --out pgn_files/demo.pgn
 """
 
@@ -45,9 +46,30 @@ def build_agent(weights_path, device):
     )
 
 
-def model_move(agent, board, args, show_stats=True):
-    """Ask the agent for a move, print its top lines, and push it."""
-    move, stats = agent.select_move(
+def move_label(board, uci):
+    """SAN plus UCI for a move on `board`, falling back to raw UCI."""
+    try:
+        return f"{board.san(chess.Move.from_uci(uci))} ({uci})"
+    except Exception:
+        return uci
+
+
+def print_top_moves(agent, board, best, combined, top_n=5):
+    """Same table eval_test.ipynb's show_top_moves prints: header, then top_n rows."""
+    side = "white" if board.turn == chess.WHITE else "black"
+    static_eval = agent.evaluate_value(board.fen())
+    print(f"{side} to move | best: {move_label(board, best)} | static eval: {static_eval:+.3f}")
+    print(f"{'#':>2}  {'move':<16}{'visits':>8}{'share':>8}{'eval':>9}{'prior':>9}")
+    print("-" * 54)
+    for rank, (uci, visits, share, ev, prior) in enumerate(combined[:top_n], start=1):
+        print(f"{rank:>2}  {move_label(board, uci):<16}{int(visits):>8}{share:>8.1%}{ev:>+9.3f}{prior:>9.4f}")
+    if not combined:
+        print("   (no visit counts -- was debug=True?)")
+
+
+def model_move(agent, board, args):
+    """Ask the agent for a move, report it, and push it."""
+    move, combined = agent.select_move(
         game_state=board,
         num_simulations=args.sims,
         temperature=0,
@@ -55,11 +77,10 @@ def model_move(agent, board, args, show_stats=True):
         mcts_policy_temperature=args.policy_temp,
         mcts_temperature=args.mcts_temp,
     )
-    print(f"model plays {board.san(chess.Move.from_uci(move))} ({move})")
-    if show_stats:
-        for rank, (uci, visits, share, ev, prior) in enumerate(stats[:5], start=1):
-            label = board.san(chess.Move.from_uci(uci)) + f" ({uci})"
-            print(f"{rank:>2}  {label:<16}{int(visits):>8}{share:>8.1%}{ev:>+9.3f}{prior:>9.4f}")
+    if args.verbose:
+        print_top_moves(agent, board, move, combined, top_n=args.top_n)
+    else:
+        print(f"model plays {move_label(board, move)}")
     board.push_uci(move)
     return move
 
@@ -100,7 +121,7 @@ def play_stockfish(agent, args):
             agent.stockfish.set_fen_position(board.fen())
             print("stockfish eval:", agent.stockfish.get_evaluation()["value"] / 100)
             move = agent.stockfish.get_best_move()
-            print(f"stockfish plays {board.san(chess.Move.from_uci(move))} ({move})")
+            print(f"stockfish plays {move_label(board, move)}")
             board.push_uci(move)
         else:
             move = model_move(agent, board, args)
@@ -146,6 +167,14 @@ def parse_args():
         default=1.0,
         help="UCT temperature, below 1.0 boosts top moves",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="print the model's top candidate moves each turn (visits, share, eval, prior), "
+        "the same table eval_test.ipynb shows. Ignored in batch mode.",
+    )
+    parser.add_argument("--top-n", dest="top_n", type=int, default=5, help="verbose mode: how many candidate moves to show")
     parser.add_argument("--color", choices=["white", "black"], default="white", help="color the opponent (you or stockfish) plays")
     parser.add_argument("--depth", type=int, default=15, help="stockfish search depth")
     parser.add_argument(
