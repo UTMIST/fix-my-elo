@@ -198,10 +198,14 @@ if __name__ == "__main__":
 
                 pred_policy, pred_val = model(
                     data
-                )  # calculate predictions for this batch
-                policy_loss = policy_criterion(
-                    pred_policy, batch_move_target
-                )  # calculate loss for policy
+                ) 
+                # only calculate policy loss if it's winner's move
+                mask = (batch_val_target.view(-1) == 1)
+                if mask.sum() > 0:
+                    policy_loss = policy_criterion(pred_policy[mask], batch_move_target[mask])
+                else:
+                    policy_loss = torch.tensor(0.0, device=device)
+                  # calculate loss for policy
                 value_loss = value_criterion(
                     pred_val, batch_val_target
                 )  # calculate loss for value
