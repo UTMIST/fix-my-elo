@@ -20,3 +20,4 @@ Team2/model_files/*tool_test*.pth
 **/*.pyc
 .env
 /Team2/runs
+Team2/puzzle_files/*

@@ -16,7 +16,7 @@ import './MainViewer.css';
 // Config from env. NEXT_PUBLIC_* vars are inlined into the client bundle at build
 // time (set them in fme-app/.env.local for dev, or as build args for Docker).
 // Fallbacks keep the app working if the env file is absent.
-const API_BASE_URL = (process.env.BACKEND_API_URL ?? 'http://127.0.0.1:8000').replace(/\/$/, '');
+const API_BASE_URL = (process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://127.0.0.1:8100').replace(/\/$/, '');
 const ENGINE_REQUEST_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_ENGINE_REQUEST_TIMEOUT_MS) || 170000;
 const DEFAULT_NUM_SIMULATIONS = Number(process.env.NEXT_PUBLIC_DEFAULT_NUM_SIMULATIONS) || 120;
 

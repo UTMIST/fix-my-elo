@@ -42,6 +42,13 @@ RUN --mount=type=bind,source=package.json,target=package.json \
 
 # Copy the rest of the source files into the image.
 COPY . .
+
+# NEXT_PUBLIC_* vars are inlined into the client bundle at build time, so this
+# must be a build arg. Setting it at runtime has no effect. The value has to be
+# reachable from the browser, not from inside the compose network.
+ARG NEXT_PUBLIC_BACKEND_API_URL
+ENV NEXT_PUBLIC_BACKEND_API_URL=$NEXT_PUBLIC_BACKEND_API_URL
+
 # Run the build script.
 RUN npm run build
 
@@ -66,7 +73,7 @@ COPY --from=build /usr/src/app/.next ./.next
 
 
 # Expose the port that the application listens on.
-EXPOSE 3000
+EXPOSE 3100
 
 # Run the application.
 CMD npm start

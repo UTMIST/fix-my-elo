@@ -14,13 +14,14 @@ services:
       context: ./backend
     environment:
       - ENGINE_URL=http://engine_server:8001
-      - FRONTEND_URL=http://frontend:3000
+      - FRONTEND_URL=http://frontend:3100
       - AGENT_MOVE_DEFAULT_NUM_SIM=${AGENT_MOVE_DEFAULT_NUM_SIM}
       - AGENT_MOVE_DEFAULT_TEMP=${AGENT_MOVE_DEFAULT_TEMP}
       - AGENT_MOVE_TIMEOUT_MS=${AGENT_MOVE_TIMEOUT_MS}
       - AGENT_MOVE_MIN_TIMEOUT_MS=${AGENT_MOVE_MIN_TIMEOUT_MS}
+      - PORT=8100
     ports:
-      - 8000:8000
+      - 8100:8100
   engine_server:
     container_name: engine_server
     build:
@@ -34,17 +35,22 @@ services:
       - MCTS_BATCH_SIZE=${MCTS_BATCH_SIZE}
       - NUM_SIM_DEFAULT=${NUM_SIM_DEFAULT}
       - TEMP_DEFAULT=${TEMP_DEFAULT}
+      - PORT=8001
     ports:
       - 8001:8001
   frontend:
     container_name: frontend
     build:
       context: ./fme-app
+      args:
+        # Browser-reachable URL. Inlined into the client bundle at build time,
+        # so it cannot be a compose service name like http://api:8100.
+        NEXT_PUBLIC_BACKEND_API_URL: http://localhost:8100
     environment:
       NODE_ENV: production
-      BACKEND_API_URL: http://api:8000
+      PORT: 3100
     ports:
-      - 3000:3000
+      - 3100:3100
 
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to
