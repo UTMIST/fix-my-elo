@@ -20,7 +20,7 @@ services:
       - AGENT_MOVE_TIMEOUT_MS=${AGENT_MOVE_TIMEOUT_MS}
       - AGENT_MOVE_MIN_TIMEOUT_MS=${AGENT_MOVE_MIN_TIMEOUT_MS}
     ports:
-      - 8000:8000
+      - 8100:8100
   modal:
     container_name: modal
     build:
@@ -42,7 +42,7 @@ services:
       context: ./fme-app
     environment:
       NODE_ENV: production
-      BACKEND_API_URL: http://api:8000
+      NEXT_PUBLIC_BACKEND_API_URL: http://api:8100
     ports:
       - 3000:3000
 
