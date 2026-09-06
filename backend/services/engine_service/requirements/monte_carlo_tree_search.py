@@ -1,4 +1,5 @@
 import math
+import chess
 import torch
 import numpy as np
 from collections import defaultdict
@@ -217,6 +218,66 @@ class Monte_Carlo_Tree_Search:
             simulations_done += 1
 
         self._flush_pending_leaves()
+
+    def get_search_tree(self, game_state, path_fens=None):
+        """
+        Recursively extract the search tree starting from `game_state`.
+        Returns a nested dictionary representing positions, visit counts, evaluations,
+        policy priors, SAN notation, and recursively expanded child nodes.
+        """
+        if path_fens is None:
+            path_fens = set()
+
+        board_fen = game_state.fen()
+        if board_fen in path_fens:
+            return None  # Cycle prevention
+
+        path_fens.add(board_fen)
+        total_visits = self.total_visits.get(board_fen, 0)
+
+        legal_moves = self.legal_moves_cache.get(board_fen) or [move.uci() for move in game_state.legal_moves]
+        is_root = len(path_fens) == 1
+        priors = self.priors_for(board_fen, legal_moves, is_root=is_root)
+        prior_map = dict(zip(legal_moves, priors)) if priors is not None else {}
+
+        freq_board = self.frequency_action[board_fen]
+        reward_board = self.expected_reward[board_fen]
+
+        children = []
+        for move_uci in legal_moves:
+            move_obj = chess.Move.from_uci(move_uci)
+            san = game_state.san(move_obj)
+            count = int(freq_board.get(move_uci, 0))
+            eval_val = float(reward_board.get(move_uci, 0.0))
+            prior = float(prior_map.get(move_uci, 0.0))
+            share = float(count / total_visits) if total_visits > 0 else 0.0
+
+            child_node = None
+            if count > 0:
+                next_state = game_state.copy(stack=False)
+                next_state.push(move_obj)
+                child_node = self.get_search_tree(next_state, path_fens.copy())
+
+            children.append({
+                "move": move_uci,
+                "san": san,
+                "count": count,
+                "share": share,
+                "eval": eval_val,
+                "prior": prior,
+                "node": child_node,
+            })
+
+        # Sort children by visit count descending, then prior descending
+        children.sort(key=lambda x: (x["count"], x["prior"]), reverse=True)
+
+        return {
+            "fen": board_fen,
+            "visits": int(total_visits),
+            "turn": "white" if game_state.turn == chess.WHITE else "black",
+            "isGameOver": game_state.is_game_over(),
+            "children": children,
+        }
     
     
     # OLD MANUAL NON-OPTIMIZED IMPL

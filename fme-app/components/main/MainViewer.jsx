@@ -11,6 +11,7 @@ import GameInfo from '../pgn-pane/GameInfo';
 import MovesList from '../user-pane/MovesList';
 import BoardControls from '../board-pane/BoardControls';
 import BoardOptions from '../board-pane/BoardOptions';
+import MctsVisualizer from '../mcts/MctsVisualizer';
 import './MainViewer.css';
 
 // Config from env. NEXT_PUBLIC_* vars are inlined into the client bundle at build
@@ -81,6 +82,7 @@ export default function MainViewer() {
   }));
   const [isEngineThinking, setIsEngineThinking] = useState(false);
   const [engineError, setEngineError] = useState('');
+  const [latestEngineTree, setLatestEngineTree] = useState(null);
   const [copyStatus, setCopyStatus] = useState('');
   const engineRequestIdRef = useRef(0);
 
@@ -204,6 +206,10 @@ export default function MainViewer() {
 
       if (engineRequestIdRef.current !== requestId) return;
 
+      if (payload?.tree) {
+        setLatestEngineTree(payload.tree);
+      }
+
       const updatedMoves = [...movesAfterUserMove, result.san];
       setEngineMoves(updatedMoves);
       setCurrentMoveIndex(updatedMoves.length - 1);
@@ -267,6 +273,7 @@ export default function MainViewer() {
     setIsAutoPlaying(false);
     setEngineError('');
     setIsEngineThinking(false);
+    setLatestEngineTree(null);
     setEngineMoves([]);
     setCurrentMoveIndex(-1);
     setEngineHeaders((prev) => ({
@@ -580,6 +587,10 @@ export default function MainViewer() {
             onMoveClick={handleMoveClick}
           />
         </div>
+
+        {mode === 'engine' && (
+          <MctsVisualizer tree={latestEngineTree} isThinking={isEngineThinking} />
+        )}
       </div>
     </div>
   );

@@ -75,7 +75,7 @@ class Agent:
             )
 
 
-    def select_move(self, game_state, num_simulations, temperature=0.0, mcts_policy_temperature=1.0, mcts_temperature=1.0, debug=False):
+    def select_move(self, game_state, num_simulations, temperature=0.0, mcts_policy_temperature=1.0, mcts_temperature=1.0, debug=False, return_tree=False):
         '''
         Selects the best move based on the policy network's predictions.
         '''
@@ -136,29 +136,34 @@ class Agent:
             checked = sum(1 for item in combined if item[1] > 0)
             # print(f"tested {checked} moves out of ", len(list(game_state.legal_moves)))
 
+        tree = mcts.get_search_tree(game_state.copy(stack=False)) if return_tree else None
+
         if temperature == 0:
             idx = int(np.argmax(counts))
-            return (moves[idx], combined)
-
-        eps = 1e-16
-        log_counts = np.log(counts + eps)
-        scaled = log_counts / float(temperature)
-
-        if not np.all(np.isfinite(scaled)):
-            probs = counts / counts.sum()
+            selected_move = moves[idx]
         else:
-            # log-sum-exp trick
-            m = np.max(scaled)
-            exp_scaled = np.exp(scaled - m)
-            s = exp_scaled.sum()
-            if s <= 0 or not np.isfinite(s):
+            eps = 1e-16
+            log_counts = np.log(counts + eps)
+            scaled = log_counts / float(temperature)
+
+            if not np.all(np.isfinite(scaled)):
                 probs = counts / counts.sum()
             else:
-                probs = exp_scaled / s
+                # log-sum-exp trick
+                m = np.max(scaled)
+                exp_scaled = np.exp(scaled - m)
+                s = exp_scaled.sum()
+                if s <= 0 or not np.isfinite(s):
+                    probs = counts / counts.sum()
+                else:
+                    probs = exp_scaled / s
 
-        probs = probs / probs.sum()
+            probs = probs / probs.sum()
+            selected_move = self.rng.choice(moves, p=probs)
 
-        return (self.rng.choice(moves, p=probs), combined)
+        if return_tree:
+            return (selected_move, combined, tree)
+        return (selected_move, combined)
     
     def evaluate_value(self, fen: str) -> float:
         """Return the scalar value-network evaluation for the given FEN (value is from

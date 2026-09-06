@@ -138,8 +138,9 @@ def post(payload: EnginePayload):
             num_simulations=num_sim,
             temperature=temp,
             debug=True,
+            return_tree=True,
         )
-        move_uci, combined = engine_reponse[0], engine_reponse[1]
+        move_uci, combined, search_tree = engine_reponse[0], engine_reponse[1], engine_reponse[2]
 
         move_obj = chess.Move.from_uci(move_uci)
         san = board.san(move_obj)
@@ -180,6 +181,7 @@ def post(payload: EnginePayload):
             "fen": fen,
             "numSimulations": num_sim,
             "staticEval": static_eval,
+            "tree": search_tree,
         },
         200,
     )
