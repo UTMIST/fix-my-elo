@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import MctsTreeNode from './MctsTreeNode';
+import React, { useState, useMemo } from 'react';
 import MctsProbabilityChart from './MctsProbabilityChart';
+import MctsGraphicalTree from './MctsGraphicalTree';
 import './MctsVisualizer.css';
 
 // Helper to compute search stats recursively
@@ -42,15 +42,21 @@ export default function MctsVisualizer({ tree, isThinking = false }) {
   const [activeTab, setActiveTab] = useState('chart');
   const [showUnvisited, setShowUnvisited] = useState(true);
 
+  const stats = useMemo(() => computeTreeStats(tree), [tree]);
+
   if (isThinking) {
     return (
       <div className="mcts-visualizer-panel pgn-panel">
         <div className="mcts-header">
-          <h2 className="panel-title">MCTS Search Visualizer</h2>
+          <div className="mcts-title-group">
+            <h2 className="panel-title">MCTS Search Visualizer</h2>
+            <span className="mcts-live-badge">Running MCTS...</span>
+          </div>
         </div>
         <div className="mcts-loading-state">
           <div className="mcts-spinner" />
-          <p>Engine is running Monte Carlo simulations...</p>
+          <p className="loading-title">Monte Carlo Tree Search in Progress</p>
+          <p className="loading-subtitle">Simulating move outcomes and building policy tree...</p>
         </div>
       </div>
     );
@@ -60,37 +66,55 @@ export default function MctsVisualizer({ tree, isThinking = false }) {
     return (
       <div className="mcts-visualizer-panel pgn-panel">
         <div className="mcts-header">
-          <h2 className="panel-title">MCTS Search Visualizer</h2>
+          <div className="mcts-title-group">
+            <h2 className="panel-title">MCTS Search Visualizer</h2>
+          </div>
         </div>
         <div className="mcts-empty-state">
-          <p>Play a move against the AI to view the MCTS search tree and probability distribution chart.</p>
+          <div className="empty-icon">♟️</div>
+          <p className="empty-title">No Search Tree Available</p>
+          <p className="empty-subtitle">Play a move against the AI to explore the Monte Carlo search tree and move distribution probabilities.</p>
         </div>
       </div>
     );
   }
 
-  const stats = computeTreeStats(tree);
-
   return (
     <div className="mcts-visualizer-panel pgn-panel">
+      {/* Visualizer Header */}
       <div className="mcts-header">
-        <h2 className="panel-title">MCTS Search Visualizer</h2>
+        <div className="mcts-title-group">
+          <h2 className="panel-title">MCTS Search Explorer</h2>
+          <span className="mcts-turn-tag">
+            {tree.turn === 'w' ? '⚪ White to move' : '⚫ Black to move'}
+          </span>
+        </div>
+
+        {/* Stats Summary Cards */}
         <div className="mcts-stats-summary">
-          <span className="stat-item">
-            <strong>Root Visits:</strong> {tree.visits}
-          </span>
-          <span className="stat-item">
-            <strong>Expanded Nodes:</strong> {stats.expandedNodes}
-          </span>
-          <span className="stat-item">
-            <strong>Max Depth:</strong> {stats.maxDepth}
-          </span>
-          <span className="stat-item">
-            <strong>Turn:</strong> {tree.turn}
-          </span>
+          <div className="stat-card" title="Total simulations run from root position">
+            <span className="stat-value">{tree.visits}</span>
+            <span className="stat-label">Simulations</span>
+          </div>
+
+          <div className="stat-card" title="Nodes visited during search">
+            <span className="stat-value">{stats.expandedNodes}</span>
+            <span className="stat-label">Expanded Nodes</span>
+          </div>
+
+          <div className="stat-card" title="Deepest ply reached in search tree">
+            <span className="stat-value">{stats.maxDepth}</span>
+            <span className="stat-label">Max Depth</span>
+          </div>
+
+          <div className="stat-card" title="Total candidate moves evaluated at root">
+            <span className="stat-value">{tree.children.length}</span>
+            <span className="stat-label">Root Moves</span>
+          </div>
         </div>
       </div>
 
+      {/* Toolbar & Tab Controls */}
       <div className="mcts-toolbar">
         <div className="mcts-tab-buttons" role="tablist">
           <button
@@ -99,54 +123,40 @@ export default function MctsVisualizer({ tree, isThinking = false }) {
             role="tab"
             aria-selected={activeTab === 'chart'}
           >
-            📊 Move Probabilities
+            <span className="tab-icon">📊</span> Move Distribution
           </button>
           <button
-            className={`mcts-tab-btn ${activeTab === 'tree' ? 'active' : ''}`}
-            onClick={() => setActiveTab('tree')}
+            className={`mcts-tab-btn ${activeTab === 'diagram' ? 'active' : ''}`}
+            onClick={() => setActiveTab('diagram')}
             role="tab"
-            aria-selected={activeTab === 'tree'}
+            aria-selected={activeTab === 'diagram'}
           >
-            🌲 Search Tree Explorer
+            <span className="tab-icon">🌳</span> Visual Tree Diagram
           </button>
         </div>
 
-        <div className="mcts-filter-controls">
-          <label className="mcts-checkbox-label">
+        <div className="mcts-controls">
+          {/* Toggle Unvisited */}
+          <label className="mcts-toggle-switch">
             <input
               type="checkbox"
               checked={showUnvisited}
               onChange={(e) => setShowUnvisited(e.target.checked)}
             />
-            <span>Show Unvisited Moves</span>
+            <span className="toggle-slider" />
+            <span className="toggle-label">Show Unvisited</span>
           </label>
         </div>
       </div>
 
+      {/* Main Content Area */}
       <div className="mcts-content-container">
         {activeTab === 'chart' && (
           <MctsProbabilityChart node={tree} />
         )}
 
-        {activeTab === 'tree' && (
-          <div className="mcts-tree-container">
-            <div className="root-node-header">
-              <span className="root-label">Root Position</span>
-              <span className="root-fen-badge" title={tree.fen}>{tree.fen}</span>
-            </div>
-
-            <div className="tree-root-children">
-              {tree.children.map((childNode, idx) => (
-                <MctsTreeNode
-                  key={`${childNode.move}-${idx}`}
-                  node={childNode}
-                  showUnvisited={showUnvisited}
-                  depth={1}
-                  defaultExpanded={idx === 0}
-                />
-              ))}
-            </div>
-          </div>
+        {activeTab === 'diagram' && (
+          <MctsGraphicalTree tree={tree} showUnvisited={showUnvisited} />
         )}
       </div>
     </div>

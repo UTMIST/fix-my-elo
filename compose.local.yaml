@@ -14,7 +14,7 @@ services:
       context: ./backend
     environment:
       - ENGINE_URL=http://engine_server:8001
-      - FRONTEND_URL=http://frontend:3100
+      - FRONTEND_URL=http://localhost:3100
       - AGENT_MOVE_DEFAULT_NUM_SIM=${AGENT_MOVE_DEFAULT_NUM_SIM}
       - AGENT_MOVE_DEFAULT_TEMP=${AGENT_MOVE_DEFAULT_TEMP}
       - AGENT_MOVE_TIMEOUT_MS=${AGENT_MOVE_TIMEOUT_MS}
