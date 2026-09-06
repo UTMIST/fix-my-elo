@@ -66,7 +66,7 @@ const buildPgnFromGame = (headers, moves) => {
 export default function MainViewer() {
   const [currentGameIndex, setCurrentGameIndex] = useState(0);
   const [boardOrientation, setBoardOrientation] = useState('white');
-  const [mode, setMode] = useState('replay');
+  const [mode, setMode] = useState('engine');
   const [manualMoves, setManualMoves] = useState([]);
   const [manualHeaders, setManualHeaders] = useState(createDefaultHeaders);
   const [engineMoves, setEngineMoves] = useState([]);
@@ -405,6 +405,14 @@ export default function MainViewer() {
         <h1 className="pgn-title">Fix-My-Elo</h1>
         <div className="mode-toggle" role="tablist" aria-label="Game mode">
           <button
+            onClick={() => handleModeChange('engine')}
+            className={`btn-mode ${mode === 'engine' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={mode === 'engine'}
+          >
+            Play vs Engine
+          </button>
+          <button
             onClick={() => handleModeChange('replay')}
             className={`btn-mode ${mode === 'replay' ? 'active' : ''}`}
             role="tab"
@@ -420,14 +428,7 @@ export default function MainViewer() {
           >
             Manual Game
           </button>
-          <button
-            onClick={() => handleModeChange('engine')}
-            className={`btn-mode ${mode === 'engine' ? 'active' : ''}`}
-            role="tab"
-            aria-selected={mode === 'engine'}
-          >
-            Play vs AI
-          </button>
+          
         </div>
 
         <div className="pgn-grid">
