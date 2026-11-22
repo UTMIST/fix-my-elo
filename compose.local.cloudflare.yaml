@@ -1,0 +1,47 @@
+# args are variables passed to docker while BUILDING each container
+# envs are variables passed to docker while RUNNING each container
+
+services:
+  api:
+    container_name: api
+    env_file: "local.cloudflare.env"
+    build:
+      context: ./backend
+    environment:
+      - ENGINE_URL=${ENGINE_URL}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - AGENT_MOVE_DEFAULT_NUM_SIM=${AGENT_MOVE_DEFAULT_NUM_SIM}
+      - AGENT_MOVE_DEFAULT_TEMP=${AGENT_MOVE_DEFAULT_TEMP}
+      - AGENT_MOVE_TIMEOUT_MS=${AGENT_MOVE_TIMEOUT_MS}
+      - AGENT_MOVE_MIN_TIMEOUT_MS=${AGENT_MOVE_MIN_TIMEOUT_MS}
+    ports:
+      - 8100:8100
+  engine_server:
+    env_file: "local.cloudflare.env"
+    container_name: engine_server
+    build:
+      context: ./backend
+      dockerfile: engine_server.Dockerfile
+    environment:
+      - MODEL_PATH=${MODEL_PATH}
+      - C_PUCT=${C_PUCT}
+      - DIRICHLET_ALPHA=${DIRICHLET_ALPHA}
+      - DIRICHLET_EPSILON=${DIRICHLET_EPSILON}
+      - MCTS_BATCH_SIZE=${MCTS_BATCH_SIZE}
+      - NUM_SIM_DEFAULT=${NUM_SIM_DEFAULT}
+      - TEMP_DEFAULT=${TEMP_DEFAULT}
+    ports:
+      - 8001:8001
+  frontend:
+    env_file: "local.cloudflare.env"
+    container_name: frontend
+    build:
+      context: ./fme-app
+      args:
+        NEXT_PUBLIC_BACKEND_API_URL: ${BACKEND_API_URL}
+        NEXT_PUBLIC_ENGINE_REQUEST_TIMEOUT_MS: ${NEXT_PUBLIC_ENGINE_REQUEST_TIMEOUT_MS}
+        NEXT_PUBLIC_DEFAULT_NUM_SIMULATIONS: ${NEXT_PUBLIC_DEFAULT_NUM_SIMULATIONS}
+    environment:
+      PORT: 3100 # PORT default required variable by nextjs
+    ports:
+      - 3100:3100

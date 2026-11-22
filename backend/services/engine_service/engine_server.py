@@ -77,14 +77,26 @@ def parse_int(name: str, default: int) -> int:
 
 MODEL_PATH = os.getenv(
     "MODEL_PATH",
-    ".services/engine_service/model/weights/lab_trained_epoch_1.pth",
+    "services/engine_service/model_weights/lab_trained_epoch_1.pth",
 )
-C_PUCT = parse_float("C_PUCT", 1.0)
+C_PUCT = parse_float("C_PUCT", 2.0)
 DIRICHLET_ALPHA = parse_float("DIRICHLET_ALPHA", 0.3)
 DIRICHLET_EPSILON = parse_float("DIRICHLET_EPSILON", 0.25)
 DEFAULT_NUM_SIM = parse_int("NUM_SIM_DEFAULT", 120)
 DEFAULT_TEMP = parse_float("TEMP_DEFAULT", 0.0)
 MCTS_BATCH_SIZE = parse_int("MCTS_BATCH_SIZE", 8)
+
+logger.info(
+    " Engine configuration: "
+    f"MODEL_PATH={MODEL_PATH}, "
+    f"C_PUCT={C_PUCT} (default=2.0), "
+    f"DIRICHLET_ALPHA={DIRICHLET_ALPHA} (default=0.3), "
+    f"DIRICHLET_EPSILON={DIRICHLET_EPSILON} (default=0.25), "
+    f"NUM_SIM_DEFAULT={DEFAULT_NUM_SIM} (default=120), "
+    f"TEMP_DEFAULT={DEFAULT_TEMP} (default=0.0), "
+    f"MCTS_BATCH_SIZE={MCTS_BATCH_SIZE} (default=8)"
+)
+
 
 app = FastAPI()
 
@@ -140,7 +152,11 @@ def post(payload: EnginePayload):
             debug=True,
             return_tree=True,
         )
-        move_uci, combined, search_tree = engine_reponse[0], engine_reponse[1], engine_reponse[2]
+        move_uci, combined, search_tree = (
+            engine_reponse[0],
+            engine_reponse[1],
+            engine_reponse[2],
+        )
 
         move_obj = chess.Move.from_uci(move_uci)
         san = board.san(move_obj)
