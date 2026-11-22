@@ -1,4 +1,4 @@
-# Thing to know
+# Things to know
 
 1. Docker has 2 types of variables: interpolation (buildtime) and runtime injection (runtime)
 
