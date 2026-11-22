@@ -9,4 +9,6 @@ FixMyElo is a policy-value CNN chess engine running MCTS, inspired by AlphaGo/Ze
 2. Set the number of simulations to anything over 2 and less than 2000
 3. Visualize the MCTS the engine performed in the tree below the board
 
-See the full report here: https://docs.google.com/document/d/1r2DsHcfkksEIRd9lvSYco7LtyJas34p0d9OhHjWisBo/edit?tab=t.6mpl9nkps9qg
+See the full report here: https://docs.google.com/document/d/1r2DsHcfkksEIRd9lvSYco7LtyJas34p0d9OhHjWisBo/edit?tab=t.0#heading=h.zftjrh5ga0lp
+
+Play against it here: https://fme-frontend-795569892145.us-central1.run.app/
