@@ -21,10 +21,13 @@ flowchart TD
 
 ## Sample position evaluations
 
-<img width="424" height="569" alt="Screenshot 2026-11-27 at 7 02 53 PM" src="https://github.com/user-attachments/assets/1730d35d-e72b-4074-afc7-94bcea6b25f7" />
-<img width="415" height="551" alt="Screenshot 2026-11-27 at 7 03 17 PM" src="https://github.com/user-attachments/assets/515311b0-bc3f-4ae3-ac03-7642b6d44978" />
-<img width="417" height="563" alt="Screenshot 2026-11-27 at 7 03 28 PM" src="https://github.com/user-attachments/assets/1c4f1cc0-6041-4bdd-a06e-429e3345e039" />
-<img width="415" height="567" alt="Screenshot 2026-11-27 at 7 07 00 PM" src="https://github.com/user-attachments/assets/50b829a9-f6aa-471e-a2a9-116ce84d2ad3" />
+## Sample position evaluations
+
+| | |
+| :---: | :---: |
+| <img width="320" alt="Position 1" src="https://github.com/user-attachments/assets/1730d35d-e72b-4074-afc7-94bcea6b25f7" /> | <img width="320" alt="Position 2" src="https://github.com/user-attachments/assets/515311b0-bc3f-4ae3-ac03-7642b6d44978" /> |
+| | |
+| <img width="320" alt="Position 3" src="https://github.com/user-attachments/assets/1c4f1cc0-6041-4bdd-a06e-429e3345e039" /> | <img width="320" alt="Position 4" src="https://github.com/user-attachments/assets/50b829a9-f6aa-471e-a2a9-116ce84d2ad3" /> |
 
 ## TensorBoard logs
 The tensorboard log for training can be viewed as follows:
