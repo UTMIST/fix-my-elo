@@ -6,7 +6,7 @@ FixMyElo, ML Projects 2025-2026.
 FixMyElo is a policy-value CNN chess engine running MCTS, inspired by AlphaGo/Zero, recreated on a budget. It is strong enough to beat beginner to amateur players on around 800 MCTS sims per move, even [beating Stockfish18 at the lowest depth](model_win_against_stockfish.pgn). We used games from [lumbrasgigabase.com](https://lumbrasgigabase.com/) and [lichess.org](https://lichess.org/) to train our models.
 
 ## Architecture
-The model architecture closely follows that of Google Deepmind's AlphaZero's.
+The model architecture closely follows that of Google Deepmind's AlphaZero's. The model takes in as input the encoded board position, then outputs a policy (distribution of possible moves and how viable each is) and a value (static evaluation of the position).
 ```mermaid
 flowchart TD
     Input["Board Input"] --> Conv["Initial Convolution"]
@@ -19,7 +19,13 @@ flowchart TD
     ValueHidden --> ValueOut["Value Output<br/>(Position Evaluation)"]
 ```
 
-## Sample position evaluations
+## MCTS inference
+During inference, the model does the following:
+1. Create a game tree, with the current position at the root.
+2. Calculate the Upper Confidence Bound score for each move.
+3. Explore the move with the highest UCB score.
+
+Note that our implementation followed the formula referenced in [this excellent blog](https://suragnair.github.io/posts/alphazero.html)
 
 ## Sample position evaluations
 
