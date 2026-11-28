@@ -24,6 +24,7 @@ During inference, the model does the following:
 1. Create a game tree, with the current position at the root.
 2. Calculate the Upper Confidence Bound score for each move.
 3. Explore the move with the highest UCB score.
+4. Return the move with the most visits made after the simulation budget is used up.
 
 Note that our implementation followed the formula referenced in [this excellent blog](https://suragnair.github.io/posts/alphazero.html)
 
