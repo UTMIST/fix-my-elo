@@ -38,7 +38,7 @@ The tensorboard log for training can be viewed as follows:
 <img width="1470" height="805" alt="Screenshot 2026-11-27 at 8 25 15 PM" src="https://github.com/user-attachments/assets/9e049968-edda-4e80-9b61-b128dd0f00eb" />
 
 
-See the full development notes [HERE](https://docs.google.com/document/d/1r2DsHcfkksEIRd9lvSYco7LtyJas34p0d9OhHjWisBo/edit?tab=t.0#heading=h.zftjrh5ga0lp).
+See the full development notes [HERE](https://docs.google.com/document/d/1r2DsHcfkksEIRd9lvSYco7LtyJas34p0d9OhHjWisBo/edit?tab=t.412b8dl60pdy#heading=h.gel5tpwcy3vn).
 
 ## Website Features
 1. Play against the engine either as white or black 
